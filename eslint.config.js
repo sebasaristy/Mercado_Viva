@@ -72,8 +72,9 @@ export default [
   },
 
   {
-    // El log del servidor sí escribe a stdout: para eso existe.
-    files: ["apps/api/src/plataforma/log.js", "db/migrar.js"],
+    // Escriben a la terminal a propósito: son herramientas de línea de comandos
+    // y el arranque del servidor, no código de petición.
+    files: ["apps/api/src/plataforma/log.js", "apps/api/src/plataforma/config.js", "db/migrar.js", "scripts/**/*.js"],
     rules: { "no-console": "off" }
   }
 ];

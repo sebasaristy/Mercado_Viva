@@ -1,64 +1,71 @@
-import { consultar } from "../../plataforma/db.js";
+import { supabase, oTirar } from "../../plataforma/supabase.js";
 
-export async function crearSesion(tx, usuario, sede) {
-  const { rows } = await tx.query(
-    `insert into sesiones_conteo (tenant_id, sede, abierta_por)
-     values ($1, $2, $3) returning *`,
-    [usuario.tenantId, sede, usuario.id]
+export async function crearSesion(usuario, sede) {
+  return oTirar(
+    await supabase.from("sesiones_conteo")
+      .insert({ tenant_id: usuario.tenantId, sede, abierta_por: usuario.id })
+      .select().single(),
+    "abrir sesión de conteo"
   );
-  return rows[0];
 }
 
+// El unique (sesion_id, ubicacion_id) de la migración hace el trabajo:
+// si la zona ya está tomada, la base rechaza con el código 23505.
 export async function asignarZona(sesionId, ubicacionId, usuarioId) {
-  const { rows } = await consultar(
-    `insert into zonas_conteo (sesion_id, ubicacion_id, usuario_id)
-     values ($1, $2, $3) returning *`,
-    [sesionId, ubicacionId, usuarioId]
+  return oTirar(
+    await supabase.from("zonas_conteo")
+      .insert({ sesion_id: sesionId, ubicacion_id: ubicacionId, usuario_id: usuarioId })
+      .select().single(),
+    "asignar zona"
   );
-  return rows[0];
 }
 
 export async function guardarLinea(_usuario, l) {
-  const { rows } = await consultar(
-    `insert into conteo_lineas
-       (id, zona_id, producto_id, cantidad_contada, snapshot_teorico, contado_en)
-     values ($1, $2, $3, $4,
-       coalesce((select cantidad from existencias
-                  where producto_id = $3 limit 1), 0), $5)
-     on conflict (id) do nothing
-     returning *`,
-    [l.id, l.zonaId, l.productoId, l.cantidadContada, l.contadoEn]
+  // El id lo genera la tablet: si ya está, es un reintento y se ignora.
+  const filas = oTirar(
+    await supabase.from("conteo_lineas")
+      .upsert({
+        id: l.id,
+        zona_id: l.zonaId,
+        producto_id: l.productoId,
+        cantidad_contada: l.cantidadContada,
+        snapshot_teorico: l.snapshotTeorico ?? 0,
+        contado_en: l.contadoEn
+      }, { onConflict: "id", ignoreDuplicates: true })
+      .select(),
+    "guardar línea de conteo"
   );
-  return rows[0] ?? { id: l.id, repetido: true };
+  return filas[0] ?? { id: l.id, repetido: true };
 }
 
 export async function lineasDeSesion(sesionId) {
-  const { rows } = await consultar(
-    `select cl.* from conteo_lineas cl
-       join zonas_conteo z on z.id = cl.zona_id
-      where z.sesion_id = $1`,
-    [sesionId]
+  const filas = oTirar(
+    await supabase.from("conteo_lineas")
+      .select("*, zona:zonas_conteo!inner(sesion_id)")
+      .eq("zona.sesion_id", sesionId),
+    "leer líneas de la sesión"
   );
-  return rows;
-}
-
-// Lo que se movió del producto entre que se abrió la sesión y ahora.
-export async function movidoDurante(tenantId, productoId, sesionId) {
-  const { rows } = await consultar(
-    `select coalesce(sum(m.cantidad), 0) as total
-       from movimientos m, sesiones_conteo s
-      where s.id = $3
-        and m.tenant_id = $1
-        and m.producto_id = $2
-        and m.creado_en >= s.abierta_en
-        and m.referencia is distinct from $3`,
-    [tenantId, productoId, sesionId]
-  );
-  return rows[0].total;
+  return filas;
 }
 
 export const cerrar = (sesionId) =>
-  consultar(
-    "update sesiones_conteo set estado = 'cerrada', cerrada_en = now() where id = $1",
-    [sesionId]
+  oTirar(
+    supabase.from("sesiones_conteo")
+      .update({ estado: "cerrada", cerrada_en: new Date().toISOString() })
+      .eq("id", sesionId).select().single(),
+    "cerrar sesión"
   );
+
+// Lo que se movió del producto desde que abrió la sesión.
+// Va como función porque necesita comparar contra abierta_en de la sesión.
+export async function movidoDurante(tenantId, productoId, sesionId) {
+  const datos = oTirar(
+    await supabase.rpc("movido_durante_conteo", {
+      p_tenant_id: tenantId,
+      p_producto_id: productoId,
+      p_sesion_id: sesionId
+    }),
+    "calcular movimientos de la ventana"
+  );
+  return Number(datos ?? 0);
+}
