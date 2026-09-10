@@ -49,7 +49,10 @@ if (!(await existe(".env"))) {
 } else {
   ok("Existe .env");
   const texto = await readFile(path.join(raiz, ".env"), "utf8");
-  for (const linea of texto.split("\n")) {
+  // Se corta con \r?\n, no con \n: en Windows el .env viene con CRLF y el \r
+  // que queda al final de cada línea hace fallar la expresión de abajo,
+  // porque el punto no cruza retornos de carro. Sin esto no carga ni una variable.
+  for (const linea of texto.split(/\r?\n/)) {
     const m = linea.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
