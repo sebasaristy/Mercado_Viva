@@ -1,0 +1,18 @@
+{
+  "name": "@mv/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@mv/compartido": "*",
+    "express": "^4.21.0",
+    "jose": "^5.9.0",
+    "pg": "^8.13.0",
+    "zod": "^3.24.0"
+  }
+}

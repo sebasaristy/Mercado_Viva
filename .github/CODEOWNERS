@@ -1,0 +1,22 @@
+# Cada carpeta tiene un responsable. GitHub lo pide para revisar el PR
+# que la toque. Los dueños son los mismos de la tabla de ARQUITECTURA.md.
+#
+# PENDIENTE: reemplazar los usuarios de ejemplo por los reales del equipo.
+
+/apps/api/src/modulos/catalogo/         @sebasaristy
+/apps/api/src/modulos/inventario/       @sebasaristy
+/apps/api/src/modulos/disponibilidad/   @persona2
+/apps/api/src/modulos/conteo/           @persona4
+/apps/api/src/modulos/pedidos/          @persona2
+
+/apps/pwa/src/local/                    @persona3
+/apps/pwa/src/pantallas/bodega/         @persona3
+/apps/pwa/src/pantallas/conteo/         @persona4
+/apps/pwa/src/pantallas/picking/        @persona4
+
+/db/migraciones/                        @sebasaristy
+/packages/compartido/                   @sebasaristy
+
+# Cambiar la arquitectura o el CI lo revisa todo el equipo.
+/ARQUITECTURA.md                        @sebasaristy @persona2 @persona3 @persona4
+/.github/                               @sebasaristy @persona2 @persona3 @persona4

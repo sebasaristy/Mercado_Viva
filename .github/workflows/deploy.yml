@@ -1,0 +1,47 @@
+name: Deploy
+
+# Todavía no se dispara solo: hasta que el despliegue esté definido,
+# se corre a mano desde la pestaña Actions.
+# Cuando esté listo, cambiar a:
+#   on:
+#     push:
+#       branches: [main]
+on:
+  workflow_dispatch:
+
+jobs:
+  migraciones:
+    runs-on: ubuntu-latest
+    environment: produccion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - name: Aplicar migraciones pendientes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate
+
+  pwa:
+    needs: migraciones
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npm run build --workspace=apps/pwa
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      # PENDIENTE: subir apps/pwa/dist a Vercel.
+      # Faltan los secrets VERCEL_TOKEN, VERCEL_ORG_ID y VERCEL_PROJECT_ID.
+
+  api:
+    needs: migraciones
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "PENDIENTE - definir dónde corre el servidor Node"

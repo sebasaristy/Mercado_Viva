@@ -1,0 +1,20 @@
+{
+  "name": "mercado-viva",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -n api,pwa -c blue,magenta \"npm:dev:api\" \"npm:dev:pwa\"",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:pwa": "npm run dev --workspace=apps/pwa",
+    "db:migrate": "node db/migrar.js",
+    "db:seed": "node db/migrar.js --semillas",
+    "lint": "eslint .",
+    "test": "node --test apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "eslint": "^9.17.0"
+  },
+  "engines": { "node": ">=20" }
+}
