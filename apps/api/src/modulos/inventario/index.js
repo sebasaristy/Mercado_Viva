@@ -1,4 +1,27 @@
-import { rutas } from "./rutas.js";
-import { registrarMovimiento, existenciaDe, historialDe } from "./servicio.js";
+// La puerta del módulo. Lo que no esté aquí, no existe para los demás.
+//
+// Este archivo es también el único que sabe qué implementación concreta se usa
+// en producción. Nada de adentro del módulo depende de esa decisión.
+import catalogo from "../catalogo/index.js";
+import { crearInventario } from "./fabrica.js";
+import { crearRepositorioSupabase } from "./adaptadores/RepositorioSupabase.js";
+import { crearRutas } from "./http/rutas.js";
 
-export default { rutas, registrarMovimiento, existenciaDe, historialDe };
+// El catálogo expone más cosas de las que inventario necesita. Aquí se recorta
+// a lo que dice el puerto: así inventario no puede empezar a usar, sin querer,
+// funciones del catálogo que no pactó.
+const puertoCatalogo = {
+  obtenerProducto: (tenantId, productoId) => catalogo.obtener(tenantId, productoId)
+};
+
+const inventario = crearInventario({
+  repositorio: crearRepositorioSupabase(),
+  catalogo: puertoCatalogo
+});
+
+export default {
+  rutas: crearRutas(inventario),
+  registrarMovimiento: inventario.registrarMovimiento,
+  consultarExistencia: inventario.consultarExistencia,
+  verHistorial: inventario.verHistorial
+};
