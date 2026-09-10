@@ -2,6 +2,7 @@ import { enviar } from "../api/cliente.js";
 import * as cola from "./cola.js";
 import { pedirAlmacenamientoPersistente } from "./db.js";
 import { estadoSync } from "./estado.js";
+import { sembrarSiHaceFalta } from "./semilla.js";
 
 // El único archivo que habla con el servidor. Las pantallas escriben en Dexie y siguen.
 let corriendo = false;
@@ -20,9 +21,13 @@ export async function vaciarCola() {
         // El servidor responde 200 si ya lo tenía y 201 si es nuevo. Los dos son éxito.
         await enviar(item.ruta, item.cuerpo, item.id);
         await cola.marcarEnviado(item.id);
+        estadoSync.getState().marcarRed(true);
       } catch (e) {
         await cola.marcarFallido(item.id, e);
-        if (e.esDeRed) break;   // no hay señal: no tiene sentido seguir intentando
+        if (e.esDeRed) {
+          estadoSync.getState().marcarRed(false);
+          break;   // no hay señal: no tiene sentido seguir intentando
+        }
       }
     }
     await cola.limpiarEnviados();
@@ -35,6 +40,7 @@ export async function vaciarCola() {
 
 export function arrancarSync() {
   pedirAlmacenamientoPersistente();
+  sembrarSiHaceFalta();
 
   // No se confía en navigator.onLine: miente. Se considera que hay red cuando
   // una petición responde, no antes. Por eso hay varios disparadores y un respaldo.

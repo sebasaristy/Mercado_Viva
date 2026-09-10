@@ -13,7 +13,7 @@
     "db:migrate": "node db/migrar.js",
     "db:seed": "node db/migrar.js --semillas",
     "lint": "eslint .",
-    "test": "node --test \"apps/**/*.test.js\" \"packages/**/*.test.js\"",
+    "test": "node scripts/pruebas.js",
     "doctor": "node scripts/doctor.js"
   },
   "devDependencies": {
