@@ -15,3 +15,9 @@ select a.id, b.id, 0.9
   from productos a join productos b on b.categoria = a.categoria and b.id <> a.id
  where a.nombre like 'Arroz Diana%' and b.nombre like 'Arroz Roa%'
 on conflict do nothing;
+
+-- Los productos de balanza se guardan con su código interno de 5 dígitos.
+-- El código que imprime la balanza trae el peso adentro y cambia en cada pesada,
+-- así que no sirve como identificador. Ver packages/compartido/src/codigos/balanza.js
+update productos set codigo_barras = '12345'
+ where nombre = 'Banano (kg)' and codigo_barras is null;

@@ -1,10 +1,9 @@
-import { supabase } from "./sesion.js";
+import { tokenActual } from "./sesion.js";
 
 const BASE = "/api";
 
 export async function enviar(ruta, cuerpo, claveIdempotente) {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
+  const token = await tokenActual();
 
   let respuesta;
   try {
@@ -17,8 +16,9 @@ export async function enviar(ruta, cuerpo, claveIdempotente) {
       },
       body: JSON.stringify(cuerpo)
     });
-  } catch (e) {
+  } catch {
     // No respondió nadie: es falta de red, no un rechazo del servidor.
+    // La operación se queda en la cola y se reintenta.
     const error = new Error("Sin conexión con el servidor.");
     error.esDeRed = true;
     throw error;
@@ -29,9 +29,11 @@ export async function enviar(ruta, cuerpo, claveIdempotente) {
     const error = new Error(detalle.mensaje ?? "Error " + respuesta.status);
     error.estado = respuesta.status;
     error.detalle = detalle.detalle;
-    // Un 4xx no se reintenta: el servidor ya dijo que está mal.
+    // Un 4xx no se reintenta: el servidor ya dijo que está mal y reintentar
+    // solo llena la cola. Un 5xx sí, porque puede ser pasajero.
     error.esDeRed = respuesta.status >= 500;
     throw error;
   }
+
   return respuesta.json();
 }

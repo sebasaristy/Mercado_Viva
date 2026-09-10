@@ -4,6 +4,10 @@ import tailwind from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // El .env vive en la raíz del repo, no dentro de apps/pwa.
+  // Vite solo expone al navegador las variables que empiezan por VITE_.
+  envDir: "../../",
+
   plugins: [
     react(),
     tailwind(),
