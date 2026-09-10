@@ -1,0 +1,8 @@
+# El repo guarda LF siempre. Cada quien ve lo que use su sistema.
+# Sin esto, Windows y Mac se pelean por finales de línea en cada PR.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.docx binary
+*.pdf binary
