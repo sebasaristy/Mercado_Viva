@@ -222,3 +222,92 @@ propio proceso el día que haga falta es cambiar los imports por llamadas HTTP d
   y vencimientos después es llenar una tabla, no migrar el libro.
 - Falta decidir dónde vive el cálculo del colchón aprendido. Por ahora es una constante por
   categoría en `disponibilidad/colchon.js`; cuando haya datos del modo sombra se vuelve un job.
+
+---
+
+## Cómo está armado un módulo por dentro
+
+`inventario` es la referencia. Los demás módulos se van moviendo a esta forma
+a medida que se implementan.
+
+```
+modulos/inventario/
+├── index.js                   la puerta. Aquí, y solo aquí, se elige
+│                              qué implementación concreta se usa
+├── fabrica.js                 arma el módulo con las dependencias que reciba
+│
+├── dominio/                   las reglas. Cero imports de afuera del dominio
+│   ├── Movimiento.js          qué es un movimiento válido y con qué signo entra
+│   ├── TipoMovimiento.js      la tabla de tipos
+│   └── errores.js             errores que no saben qué es un código HTTP
+│
+├── casos-uso/                 orquestan: piden, deciden con el dominio, guardan
+│   ├── RegistrarMovimiento.js
+│   └── ConsultarInventario.js
+│
+├── puertos/                   los contratos, declarados por quien los USA
+│   ├── RepositorioInventario.js
+│   └── PuertoCatalogo.js
+│
+├── adaptadores/               implementaciones de los puertos
+│   ├── RepositorioPostgres.js    el real. Aquí, y solo aquí, hay SQL
+│   └── RepositorioEnMemoria.js   el de las pruebas
+│
+├── http/                      traduce peticiones a casos de uso y errores a códigos
+│   ├── rutas.js
+│   └── esquemas.js
+└── __tests__/
+```
+
+Las dependencias apuntan siempre hacia adentro: `http → casos-uso → dominio`, y
+los adaptadores dependen de los puertos, nunca al revés. El dominio no importa
+nada de las otras capas.
+
+### Qué se gana con esto
+
+No es teoría: es que **las pruebas corren sin base de datos**. El mismo caso de uso
+que corre en producción se prueba contra `RepositorioEnMemoria`, en milisegundos,
+sin Supabase levantado. Si los casos de uso importaran el repositorio en vez de
+recibirlo, no habría forma de hacerlo.
+
+Lo demás sale de ahí:
+
+- **Una responsabilidad por capa.** El dominio decide, el caso de uso orquesta, el
+  adaptador habla SQL, las rutas traducen HTTP. Cambiar Postgres por otra cosa toca
+  un archivo.
+- **Abierto a extensión.** Agregar un tipo de movimiento es agregar una fila en
+  `TipoMovimiento.js`. No hay ningún `switch` por tipo regado en los casos de uso.
+- **Implementaciones intercambiables.** `__tests__/contratoRepositorio.test.js` corre
+  la misma batería contra memoria y contra Postgres. Si una pasa y la otra no, el
+  diseño se rompió y las demás pruebas dejarían de significar algo.
+- **Contratos chicos.** El puerto de catálogo tiene un método, porque es lo único que
+  inventario necesita. `index.js` recorta lo que expone `catalogo` para que el módulo
+  no pueda empezar a usar, sin querer, cosas que no pactó.
+
+## Entorno de desarrollo
+
+```bash
+npm run doctor    # revisa node, dependencias, .env, conexión, tablas y semillas
+npm run dev       # api en :3000, pwa en :5173
+```
+
+`npm run doctor` es lo primero que hay que correr cuando algo no arranca. Dice qué
+falta y cómo arreglarlo, en vez de dejar que reviente a mitad de una petición.
+
+**Panel de desarrollo: `http://localhost:3000/dev`**
+
+Se monta solo fuera de producción. Muestra, en vivo:
+
+- si la base conecta y qué migraciones están aplicadas
+- las 13 tablas con cuántas filas tiene cada una
+- los tres números por producto: teórico, reservado, colchón y disponible
+- los últimos movimientos del libro
+- todas las rutas montadas, sacadas del propio Express
+- las últimas peticiones con estado, duración e `Idempotency-Key`
+
+Mientras `npm run dev` corre, cada petición también sale en la terminal con su
+código de estado y cuánto tardó.
+
+`AUTH_DESACTIVADA=true` en el `.env` salta la verificación del token para poder
+probar endpoints antes de montar el login. `config.js` impide que quede encendido
+fuera de desarrollo.

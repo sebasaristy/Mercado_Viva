@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel dev — Mercado Viva</title>
+<style>
+  :root {
+    --fondo: #f6f6f3; --tarjeta: #fff; --tinta: #171a15; --tenue: #5f665a;
+    --linea: #e1e3db; --acento: #8f5407; --ok: #1f6b3e; --mal: #a8342a; --aviso: #96690b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #121410; --tarjeta: #1a1d17; --tinta: #eceee6; --tenue: #99a08d;
+      --linea: #2d3229; --acento: #e9a93e; --ok: #66c48c; --mal: #e8776a; --aviso: #e9a93e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fondo); color: var(--tinta);
+    font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+  }
+  .contenedor { max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--tenue); font-size: 12.5px; }
+  .barra { display: flex; gap: 10px; align-items: center; margin: 14px 0 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; padding: 7px 13px; border: 1px solid var(--linea);
+    background: var(--tarjeta); color: var(--tinta); border-radius: 6px; cursor: pointer;
+  }
+  button:hover { border-color: var(--acento); }
+  label { font-size: 12.5px; color: var(--tenue); display: flex; align-items: center; gap: 6px; }
+
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .tarjeta { background: var(--tarjeta); border: 1px solid var(--linea); border-radius: 8px; padding: 14px 16px; }
+  .tarjeta.ancha { grid-column: 1 / -1; }
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--tenue); margin: 0 0 10px; font-weight: 600;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-weight: 600; color: var(--tenue); padding: 5px 8px 5px 0; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--linea); }
+  td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--linea); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+  .mono { font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; }
+
+  .pin { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .pin.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .pin.mal { background: color-mix(in srgb, var(--mal) 16%, transparent); color: var(--mal); }
+  .pin.aviso { background: color-mix(in srgb, var(--aviso) 18%, transparent); color: var(--aviso); }
+
+  .fila { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 12.5px; }
+  .fila span:first-child { color: var(--tenue); }
+  .destacado { color: var(--acento); font-weight: 600; }
+  .vacio { color: var(--tenue); font-size: 12.5px; font-style: italic; }
+  .scroll { max-height: 320px; overflow: auto; }
+</style>
+</head>
+<body>
+<div class="contenedor">
+
+  <header>
+    <h1>Panel de desarrollo</h1>
+    <span class="sub" id="cabecera">cargando…</span>
+  </header>
+
+  <div class="barra">
+    <button onclick="cargar()">Actualizar</button>
+    <label><input type="checkbox" id="auto" checked> cada 5 s</label>
+    <span class="sub" id="ultima"></span>
+  </div>
+
+  <div class="rejilla">
+    <div class="tarjeta"><h2>Entorno</h2><div id="entorno"></div></div>
+    <div class="tarjeta"><h2>Base de datos</h2><div id="db"></div></div>
+    <div class="tarjeta"><h2>Tablas</h2><div id="tablas" class="scroll"></div></div>
+
+    <div class="tarjeta ancha">
+      <h2>Inventario — los tres números</h2>
+      <div id="inventario" class="scroll"></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Últimos movimientos</h2>
+      <div id="movimientos" class="scroll"></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Rutas montadas</h2>
+      <div id="rutas" class="scroll"></div>
+    </div>
+
+    <div class="tarjeta ancha">
+      <h2>Peticiones recientes</h2>
+      <div id="peticiones" class="scroll"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function filas(pares) {
+  return pares.map(([k, v]) =>
+    `<div class="fila"><span>${esc(k)}</span><span>${v}</span></div>`).join("");
+}
+
+async function cargar() {
+  let d;
+  try {
+    d = await (await fetch("/dev/estado")).json();
+  } catch (e) {
+    $("cabecera").innerHTML = '<span class="pin mal">servidor caído</span>';
+    return;
+  }
+
+  $("cabecera").innerHTML =
+    `<span class="pin ${d.db.conecta ? "ok" : "mal"}">${d.db.conecta ? "conectado" : "sin base"}</span>` +
+    ` puerto ${d.entorno.puerto} · ${esc(d.entorno.modo)}` +
+    (d.entorno.authDesactivada ? ' · <span class="pin aviso">auth off</span>' : "");
+
+  $("entorno").innerHTML = filas([
+    ["modo", esc(d.entorno.modo)],
+    ["node", esc(d.entorno.node)],
+    ["arriba hace", esc(d.entorno.arribaHace)],
+    [".env", d.entorno.archivoEnv ? '<span class="pin ok">cargado</span>' : '<span class="pin mal">no encontrado</span>'],
+    ["tenant", `<span class="mono">${esc(String(d.entorno.tenant).slice(0, 13))}…</span>`]
+  ]);
+
+  $("db").innerHTML = d.db.conecta
+    ? filas([
+        ["motor", esc(d.db.motor)],
+        ["hora del servidor", esc(new Date(d.db.hora).toLocaleTimeString())],
+        ["migraciones", d.migraciones === null
+          ? '<span class="pin aviso">sin registro</span>'
+          : `<span class="pin ok">${d.migraciones.length} aplicadas</span>`]
+      ])
+    : `<span class="pin mal">no conecta</span><p class="mono">${esc(d.db.error)}</p>`;
+
+  if (d.tablas?.error) {
+    $("tablas").innerHTML = `<p class="mono">${esc(d.tablas.error)}</p>`;
+  } else {
+    $("tablas").innerHTML = "<table>" + d.tablas.map((t) =>
+      `<tr><td>${esc(t.tabla)}</td><td class="num">${
+        t.existe ? t.filas : '<span class="pin mal">falta</span>'}</td></tr>`).join("") + "</table>";
+  }
+
+  if (d.inventario?.error) {
+    $("inventario").innerHTML = `<p class="mono">${esc(d.inventario.error)}</p>`;
+  } else if (!d.inventario.length) {
+    $("inventario").innerHTML = '<p class="vacio">Sin productos. Corre npm run db:seed.</p>';
+  } else {
+    $("inventario").innerHTML =
+      "<table><tr><th>Producto</th><th>Categoría</th>" +
+      "<th class='num'>Teórico</th><th class='num'>Reservado</th>" +
+      "<th class='num'>Colchón</th><th class='num'>Disponible</th></tr>" +
+      d.inventario.map((p) => `<tr>
+        <td>${esc(p.nombre)}</td>
+        <td>${esc(p.categoria)}</td>
+        <td class="num">${esc(p.teorico)}</td>
+        <td class="num">${esc(p.reservado)}</td>
+        <td class="num">${esc(p.colchon)}</td>
+        <td class="num destacado">${esc(p.disponible)}</td>
+      </tr>`).join("") + "</table>";
+  }
+
+  if (d.movimientos?.error || !d.movimientos?.length) {
+    $("movimientos").innerHTML = '<p class="vacio">Todavía no hay movimientos.</p>';
+  } else {
+    $("movimientos").innerHTML = "<table>" + d.movimientos.map((m) => `<tr>
+      <td>${esc(m.tipo)}</td>
+      <td>${esc(m.producto)}</td>
+      <td class="num">${esc(m.cantidad)}</td>
+      <td class="mono">${esc(new Date(m.registrado_en).toLocaleTimeString())}</td>
+    </tr>`).join("") + "</table>";
+  }
+
+  $("rutas").innerHTML = "<table>" + d.rutas.map((r) =>
+    `<tr><td class="mono">${esc(r.metodos.join(","))}</td>
+         <td class="mono">${esc(r.ruta)}</td></tr>`).join("") + "</table>";
+
+  $("peticiones").innerHTML = d.peticiones.length
+    ? "<table><tr><th>Hora</th><th>Método</th><th>Ruta</th><th class='num'>Estado</th><th class='num'>ms</th><th>Idempotency-Key</th></tr>" +
+      d.peticiones.map((p) => `<tr>
+        <td class="mono">${esc(new Date(p.cuando).toLocaleTimeString())}</td>
+        <td class="mono">${esc(p.metodo)}</td>
+        <td class="mono">${esc(p.ruta)}</td>
+        <td class="num"><span class="pin ${p.estado < 400 ? "ok" : p.estado < 500 ? "aviso" : "mal"}">${p.estado}</span></td>
+        <td class="num">${esc(p.ms)}</td>
+        <td class="mono">${p.idempotencia ? esc(p.idempotencia.slice(0, 8)) + "…" : ""}</td>
+      </tr>`).join("") + "</table>"
+    : '<p class="vacio">Nada todavía. Haz una petición a la API y aparece aquí.</p>';
+
+  $("ultima").textContent = "actualizado " + new Date().toLocaleTimeString();
+}
+
+cargar();
+setInterval(() => { if ($("auto").checked) cargar(); }, 5000);
+</script>
+</body>
+</html>
