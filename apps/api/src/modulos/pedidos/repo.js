@@ -1,40 +1,54 @@
-import { consultar } from "../../plataforma/db.js";
+import { supabase, oTirar } from "../../plataforma/supabase.js";
 
 export async function obtener(pedidoId) {
-  const { rows } = await consultar("select * from pedidos where id = $1", [pedidoId]);
-  return rows[0] ?? null;
+  const filas = oTirar(
+    await supabase.from("pedidos").select("*").eq("id", pedidoId).limit(1),
+    "leer pedido"
+  );
+  return filas[0] ?? null;
 }
 
 export async function lineasDe(pedidoId) {
-  const { rows } = await consultar(
-    "select id, producto_id as \"productoId\", cantidad from pedido_lineas where pedido_id = $1",
-    [pedidoId]
+  const filas = oTirar(
+    await supabase.from("pedido_lineas")
+      .select("id, producto_id, cantidad").eq("pedido_id", pedidoId),
+    "leer líneas del pedido"
   );
-  return rows;
+  return filas.map((l) => ({ id: l.id, productoId: l.producto_id, cantidad: Number(l.cantidad) }));
 }
 
 export async function linea(lineaId) {
-  const { rows } = await consultar("select * from pedido_lineas where id = $1", [lineaId]);
-  return rows[0] ?? null;
+  const filas = oTirar(
+    await supabase.from("pedido_lineas").select("*").eq("id", lineaId).limit(1),
+    "leer línea"
+  );
+  return filas[0] ?? null;
 }
 
+// Congela el precio y el costo del momento en cada línea: si mañana sube el
+// precio, este pedido no cambia.
 export const congelarPrecios = (pedidoId) =>
-  consultar(
-    `update pedido_lineas l
-        set precio_unit = p.precio, costo_unit = p.costo
-       from productos p
-      where p.id = l.producto_id and l.pedido_id = $1`,
-    [pedidoId]
+  oTirar(
+    supabase.rpc("congelar_precios_pedido", { p_pedido_id: pedidoId }),
+    "congelar precios"
   );
 
 export const cambiarEstado = (pedidoId, estado) =>
-  consultar("update pedidos set estado = $2 where id = $1", [pedidoId, estado]);
+  oTirar(
+    supabase.from("pedidos").update({ estado }).eq("id", pedidoId).select().single(),
+    "cambiar estado del pedido"
+  );
 
 export const cambiarEstadoLinea = (lineaId, estado) =>
-  consultar("update pedido_lineas set estado_linea = $2 where id = $1", [lineaId, estado]);
+  oTirar(
+    supabase.from("pedido_lineas").update({ estado_linea: estado })
+      .eq("id", lineaId).select().single(),
+    "cambiar estado de la línea"
+  );
 
 export const registrarEvento = (pedidoId, tipo, actorId, datos = {}) =>
-  consultar(
-    "insert into pedido_eventos (pedido_id, tipo, actor_id, datos) values ($1,$2,$3,$4)",
-    [pedidoId, tipo, actorId, datos]
+  oTirar(
+    supabase.from("pedido_eventos")
+      .insert({ pedido_id: pedidoId, tipo, actor_id: actorId, datos }).select().single(),
+    "registrar evento del pedido"
   );

@@ -22,9 +22,9 @@ export function montarPanelDev(app) {
   });
 
   rutas.get("/estado", async (_req, res) => {
-    const [db, migraciones, tablas, inventario, movimientos] = await Promise.all([
-      estado.estadoBaseDeDatos(),
-      estado.migracionesAplicadas(),
+    const [db, funciones, tablas, inventario, movimientos] = await Promise.all([
+      estado.estadoConexion(),
+      estado.funcionesInstaladas(),
       estado.tablasYConteos().catch((e) => ({ error: e.message })),
       estado.fotoDelInventario(),
       estado.ultimosMovimientos()
@@ -41,7 +41,7 @@ export function montarPanelDev(app) {
         arribaHace: Math.round(process.uptime()) + "s"
       },
       db,
-      migraciones,
+      funciones,
       tablas,
       inventario,
       movimientos,

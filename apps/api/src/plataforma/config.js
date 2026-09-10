@@ -21,9 +21,11 @@ function cargarDotEnv() {
 
 const archivo = cargarDotEnv();
 
+const puesta = (v) => Boolean(v) && !v.includes("[");
+
 function exigir(nombre, ayuda) {
   const v = process.env[nombre];
-  if (!v || v.includes("[")) {
+  if (!puesta(v)) {
     console.error(
       `\nFalta la variable ${nombre}.\n  ${ayuda}\n  Corre "npm run doctor" para ver todo lo que falta.\n`
     );
@@ -32,20 +34,37 @@ function exigir(nombre, ayuda) {
   return v;
 }
 
+// Acepta varios nombres para la misma clave. Es útil cuando el .env del equipo
+// quedó con un nombre distinto al del ejemplo.
+function exigirAlguna(nombres, ayuda) {
+  for (const n of nombres) {
+    if (puesta(process.env[n])) return process.env[n];
+  }
+  console.error(
+    `\nFalta ${nombres[0]}.\n  ${ayuda}\n` +
+    `  Alternativas aceptadas: ${nombres.slice(1).join(", ")}\n` +
+    `  Corre "npm run doctor" para ver todo lo que falta.\n`
+  );
+  process.exit(1);
+}
+
 export const config = {
   entorno: process.env.NODE_ENV ?? "development",
   esDesarrollo: (process.env.NODE_ENV ?? "development") !== "production",
   puerto: Number(process.env.PORT ?? 3000),
   archivoEnv: archivo,
 
-  db: {
-    url: exigir("DATABASE_URL", "Supabase → Settings → Database → Connection string"),
-    // Supabase exige TLS pero con certificado que Node no valida por defecto.
-    ssl: { rejectUnauthorized: false }
-  },
-
+  // Todo entra por la REST de Supabase. No hay conexión directa a Postgres.
   supabase: {
-    url: process.env.SUPABASE_URL ?? "",
+    url: exigir("SUPABASE_URL", "Supabase → Settings → API → Project URL"),
+    // Se salta RLS. Solo vive en el servidor, jamás en el navegador.
+    // En Supabase se llama "service_role secret" (Settings → API).
+    // NO es el "JWT secret", que es otra cosa y no sirve para esto.
+    serviceRoleKey: exigirAlguna(
+      ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_JWT_SECRET_ROLE", "SUPABASE_SERVICE_KEY"],
+      "Supabase → Settings → API → service_role secret"
+    ),
+    // Respeta RLS. Es la que usa la PWA.
     anonKey: process.env.SUPABASE_ANON_KEY ?? ""
   },
 

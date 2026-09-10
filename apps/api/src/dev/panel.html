@@ -133,14 +133,18 @@ async function cargar() {
     ["tenant", `<span class="mono">${esc(String(d.entorno.tenant).slice(0, 13))}…</span>`]
   ]);
 
+  const faltantes = (d.funciones ?? []).filter((f) => !f.existe);
+
   $("db").innerHTML = d.db.conecta
     ? filas([
-        ["motor", esc(d.db.motor)],
-        ["hora del servidor", esc(new Date(d.db.hora).toLocaleTimeString())],
-        ["migraciones", d.migraciones === null
-          ? '<span class="pin aviso">sin registro</span>'
-          : `<span class="pin ok">${d.migraciones.length} aplicadas</span>`]
-      ])
+        ["vía", esc(d.db.via)],
+        ["productos", esc(d.db.productos)],
+        ["funciones RPC", faltantes.length === 0
+          ? `<span class="pin ok">${d.funciones.length} instaladas</span>`
+          : `<span class="pin mal">faltan ${faltantes.length}</span>`]
+      ]) + (faltantes.length
+        ? `<p class="mono" style="margin:8px 0 0">Corre db/migraciones/006_funciones_inventario.sql en el editor SQL de Supabase.<br>Faltan: ${faltantes.map((f) => esc(f.nombre)).join(", ")}</p>`
+        : "")
     : `<span class="pin mal">no conecta</span><p class="mono">${esc(d.db.error)}</p>`;
 
   if (d.tablas?.error) {

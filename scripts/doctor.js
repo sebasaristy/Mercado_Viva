@@ -3,7 +3,7 @@
 import { readFile, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import pg from "pg";
+import { createClient } from "@supabase/supabase-js";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -56,82 +56,106 @@ if (!(await existe(".env"))) {
 }
 
 const requeridas = {
-  DATABASE_URL: "cadena de conexión a Postgres (Supabase → Settings → Database)",
   SUPABASE_URL: "Supabase → Settings → API → Project URL",
   TENANT_ID: "el uuid de la sede; sirve el de .env.example para el MVP"
 };
 
+const CLAVES_SERVICE = ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_JWT_SECRET_ROLE", "SUPABASE_SERVICE_KEY"];
+
 for (const [nombre, donde] of Object.entries(requeridas)) {
   const v = process.env[nombre];
   if (!v || v.includes("[")) mal(`Falta ${nombre}`, donde);
-  else ok(nombre, nombre === "DATABASE_URL" ? "(oculta)" : v.slice(0, 42));
+  else ok(nombre, v.slice(0, 46));
+}
+
+const claveService = CLAVES_SERVICE.map((n) => process.env[n]).find((v) => v && !v.includes("["));
+if (claveService) {
+  const nombreUsado = CLAVES_SERVICE.find((n) => process.env[n] === claveService);
+  ok("Clave service_role", nombreUsado === CLAVES_SERVICE[0]
+    ? "(oculta)"
+    : `(oculta) — está como ${nombreUsado}; el nombre del ejemplo es ${CLAVES_SERVICE[0]}`);
+} else {
+  mal("Falta la clave service_role",
+    "Supabase → Settings → API → service_role secret (NO es el JWT secret)");
 }
 
 if (!process.env.SUPABASE_ANON_KEY) {
   aviso("SUPABASE_ANON_KEY vacía", "la API arranca, pero el login de la PWA no funcionará");
 }
 
-/* ---------- 3. base de datos ---------- */
-console.log("\n\x1b[1mBase de datos\x1b[0m");
+/* ---------- 3. Supabase ---------- */
+console.log("\n\x1b[1mSupabase\x1b[0m");
 
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("[")) {
-  mal("No se puede probar la conexión", "llena DATABASE_URL primero");
+const url = process.env.SUPABASE_URL;
+
+if (!url || url.includes("[") || !claveService) {
+  mal("No se puede probar la conexión", "llena SUPABASE_URL y la clave service_role primero");
 } else {
-  const db = new pg.Client({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 8000
+  const sb = createClient(url, claveService, {
+    auth: { persistSession: false, autoRefreshToken: false }
   });
 
-  try {
-    await db.connect();
-    const { rows: [v] } = await db.query("select version()");
-    ok("Conecta", v.version.split(",")[0]);
+  // Tabla -> módulo dueño, igual que en ARQUITECTURA.md.
+  const TABLAS = [
+    "productos", "equivalencias", "ubicaciones", "movimientos", "existencias",
+    "reservas", "colchones", "sesiones_conteo", "zonas_conteo", "conteo_lineas",
+    "pedidos", "pedido_lineas", "pedido_eventos"
+  ];
 
-    // ¿Están las tablas que esperan los módulos?
-    const esperadas = [
-      ["productos", "catalogo"], ["equivalencias", "catalogo"],
-      ["movimientos", "inventario"], ["existencias", "inventario"], ["ubicaciones", "inventario"],
-      ["reservas", "disponibilidad"], ["colchones", "disponibilidad"],
-      ["sesiones_conteo", "conteo"], ["zonas_conteo", "conteo"], ["conteo_lineas", "conteo"],
-      ["pedidos", "pedidos"], ["pedido_lineas", "pedidos"], ["pedido_eventos", "pedidos"]
-    ];
-    const { rows } = await db.query(
-      "select table_name from information_schema.tables where table_schema = 'public'"
-    );
-    const hay = new Set(rows.map((r) => r.table_name));
+  const resultados = await Promise.all(TABLAS.map(async (t) => {
+    const { error, count } = await sb.from(t).select("*", { count: "exact", head: true });
+    return { tabla: t, error, filas: count ?? 0 };
+  }));
 
-    const faltantes = esperadas.filter(([t]) => !hay.has(t));
-    if (faltantes.length === 0) {
-      ok(`Las ${esperadas.length} tablas están`);
-    } else {
-      mal(
-        `Faltan ${faltantes.length} tablas: ${faltantes.map(([t]) => t).join(", ")}`,
-        "npm run db:migrate"
-      );
+  const noAlcanzables = resultados.filter((r) => r.error && r.error.code === "42P01");
+  const otrosErrores = resultados.filter((r) => r.error && r.error.code !== "42P01");
+
+  if (otrosErrores.length) {
+    const e = otrosErrores[0].error;
+    mal(`No responde: ${e.message}`,
+      /Invalid API key|JWT/i.test(e.message)
+        ? "la clave no es la service_role; revisa Settings → API"
+        : /fetch failed|ENOTFOUND/i.test(e.message)
+        ? "revisa SUPABASE_URL; ¿el proyecto está activo?"
+        : "revisa SUPABASE_URL y la clave");
+  } else {
+    ok("Responde la REST de Supabase");
+
+    noAlcanzables.length === 0
+      ? ok(`Las ${TABLAS.length} tablas están`)
+      : mal(`Faltan ${noAlcanzables.length} tablas: ${noAlcanzables.map((r) => r.tabla).join(", ")}`,
+          "corre las migraciones de db/migraciones en el editor SQL de Supabase");
+
+    // La vista es la que da los tres números; sin ella no hay disponibilidad.
+    const { error: eVista } = await sb.from("v_disponible")
+      .select("*", { count: "exact", head: true });
+    eVista
+      ? mal("Falta la vista v_disponible", "corre db/migraciones/003_disponibilidad.sql")
+      : ok("Vista v_disponible");
+
+    // Las funciones son las que hacen las escrituras atómicas. Sin ellas no se
+    // puede registrar nada, aunque las tablas estén.
+    const FUNCIONES = ["registrar_movimiento", "disponible_de", "reservar_lineas",
+                       "movido_durante_conteo", "congelar_precios_pedido"];
+    const faltanFn = [];
+    for (const fn of FUNCIONES) {
+      const { error } = await sb.rpc(fn, {});
+      // PGRST202 = la REST no encuentra la función. Cualquier otro error significa
+      // que existe y se quejó por los argumentos, que es justo lo que esperamos.
+      if (error?.code === "PGRST202") faltanFn.push(fn);
     }
+    faltanFn.length === 0
+      ? ok(`Las ${FUNCIONES.length} funciones RPC están`)
+      : mal(`Faltan funciones: ${faltanFn.join(", ")}`,
+          "corre db/migraciones/006_funciones_inventario.sql en el editor SQL de Supabase");
 
-    // La vista es lo que consulta disponibilidad; si no está, todo el ATP falla.
-    const { rows: vistas } = await db.query(
-      "select table_name from information_schema.views where table_name = 'v_disponible'"
-    );
-    vistas.length
-      ? ok("Vista v_disponible")
-      : mal("Falta la vista v_disponible", "revisa db/migraciones/003_disponibilidad.sql");
-
-    if (hay.has("productos")) {
-      const { rows: [c] } = await db.query("select count(*)::int as n from productos");
-      c.n > 0
-        ? ok(`Hay ${c.n} productos`)
-        : aviso("El catálogo está vacío", "npm run db:seed para los datos de demo");
+    const productos = resultados.find((r) => r.tabla === "productos");
+    if (productos && !productos.error) {
+      productos.filas > 0
+        ? ok(`Hay ${productos.filas} productos`)
+        : aviso("El catálogo está vacío",
+            "corre db/semillas/productos_demo.sql en el editor SQL de Supabase");
     }
-
-    await db.end();
-  } catch (e) {
-    mal("No conecta: " + e.message,
-      e.message.includes("password") ? "revisa la contraseña en DATABASE_URL"
-      : e.message.includes("ENOTFOUND") ? "revisa el host; ¿el proyecto de Supabase está activo?"
-      : "revisa DATABASE_URL");
   }
 }
 

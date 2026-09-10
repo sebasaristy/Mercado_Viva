@@ -1,45 +1,39 @@
-// La misma interfaz, sin base de datos.
+// La misma interfaz, sin Supabase ni red.
 //
 // No es un juguete: es lo que permite probar las reglas de negocio de verdad,
-// en milisegundos y sin Supabase levantado. Si esta implementación y la de
-// Postgres no fueran intercambiables, el diseño estaría mal — por eso las
-// pruebas de contrato corren contra las dos.
+// en milisegundos. Si esta implementación y la de Supabase no fueran
+// intercambiables, el diseño estaría mal — por eso las pruebas de contrato
+// corren contra las dos.
 export function crearRepositorioEnMemoria() {
   const movimientos = new Map();   // id -> movimiento
   const existencias = new Map();   // "tenant|producto" -> cantidad
   const llave = (t, p) => `${t}|${p}`;
 
   return {
-    // No hay transacciones reales, pero sí el mismo comportamiento observable:
-    // si el callback falla, no queda nada a medias.
-    async enTransaccion(fn) {
-      const respaldoMov = new Map(movimientos);
-      const respaldoEx = new Map(existencias);
-      try {
-        return await fn({ enMemoria: true });
-      } catch (e) {
-        movimientos.clear();
-        for (const [k, v] of respaldoMov) movimientos.set(k, v);
-        existencias.clear();
-        for (const [k, v] of respaldoEx) existencias.set(k, v);
-        throw e;
+    // Aquí la atomicidad sale gratis: es una sola función síncrona sobre dos Maps.
+    // En Supabase la da la función de Postgres. El contrato es el mismo.
+    async registrarMovimiento(m) {
+      if (movimientos.has(m.id)) {
+        return {
+          yaExistia: true,
+          existencia: existencias.get(llave(m.tenantId, m.productoId)) ?? 0,
+          movimiento: movimientos.get(m.id)
+        };
       }
-    },
 
-    async guardarMovimiento(_tx, m) {
-      if (movimientos.has(m.id)) return true;
-      movimientos.set(m.id, {
+      const guardado = {
         ...m,
         usuario_id: m.usuarioId,
+        producto_id: m.productoId,
         creado_en: m.creadoEn,
         registrado_en: new Date()
-      });
-      return false;
-    },
+      };
+      movimientos.set(m.id, guardado);
 
-    async aplicarDelta(_tx, tenantId, productoId, delta) {
-      const k = llave(tenantId, productoId);
-      existencias.set(k, (existencias.get(k) ?? 0) + delta);
+      const k = llave(m.tenantId, m.productoId);
+      existencias.set(k, (existencias.get(k) ?? 0) + m.cantidad);
+
+      return { yaExistia: false, existencia: existencias.get(k), movimiento: guardado };
     },
 
     async existencia(tenantId, productoId) {
@@ -49,7 +43,7 @@ export function crearRepositorioEnMemoria() {
     async historial(tenantId, productoId, limite = 100) {
       return [...movimientos.values()]
         .filter((m) => m.tenantId === tenantId && m.productoId === productoId)
-        .sort((a, b) => b.creadoEn - a.creadoEn)
+        .sort((a, b) => new Date(b.creadoEn) - new Date(a.creadoEn))
         .slice(0, limite);
     },
 
