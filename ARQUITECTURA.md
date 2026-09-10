@@ -95,8 +95,16 @@ usando `plataforma/transaccion.js`. Y nunca se escribe `cantidad = X`: siempre
 `cantidad = cantidad + $delta`, con `SELECT ... FOR UPDATE` sobre la fila.
 
 **5. La PWA no habla con Supabase directo.**
-Siempre pasa por la API. Supabase se usa como Postgres administrado + emisor de tokens, nada más.
-Si el navegador pudiera escribir en las tablas, las reglas del servidor sobrarían.
+Siempre pasa por la API. La PWA solo conoce la **anon key**; la **service_role**, que se
+salta RLS por completo, vive únicamente en el servidor. Si el navegador pudiera escribir
+en las tablas, las reglas del servidor sobrarían.
+
+**6. Las escrituras que tienen que ser atómicas van como funciones de Postgres.**
+La API entra por la REST de Supabase, y esa REST no tiene transacciones de varias
+sentencias: cada llamada es la suya. Cuando una operación son dos escrituras que van
+juntas o ninguna —el asiento del movimiento y el delta de la proyección— la transacción
+se mueve adentro de la base y se llama con `supabase.rpc()`. Ver
+`db/migraciones/006_funciones_inventario.sql` y la decisión 007 en `docs/decisiones.md`.
 
 ---
 
