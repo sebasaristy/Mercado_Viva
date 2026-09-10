@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Aplicar migraciones pendientes
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run build --workspace=apps/pwa
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

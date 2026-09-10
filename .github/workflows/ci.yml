@@ -17,7 +17,7 @@ jobs:
           node-version: '20'
 
       - name: Instalar
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Lint
         # Aquí se cae si alguien importó un módulo por dentro
