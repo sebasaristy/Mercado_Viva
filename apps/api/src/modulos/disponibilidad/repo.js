@@ -1,40 +1,46 @@
-import { consultar } from "../../plataforma/db.js";
+import { supabase, oTirar } from "../../plataforma/supabase.js";
+
+const VACIO = { teorico: 0, reservado: 0, colchon: 0, disponible: 0 };
 
 export async function disponible(tenantId, productoId) {
-  const { rows } = await consultar(
-    "select * from v_disponible where tenant_id = $1 and producto_id = $2",
-    [tenantId, productoId]
+  const datos = oTirar(
+    await supabase.rpc("disponible_de", {
+      p_tenant_id: tenantId,
+      p_producto_id: productoId
+    }),
+    "consultar disponible"
   );
-  return rows[0] ?? { teorico: 0, reservado: 0, colchon: 0, disponible: 0 };
+  if (!datos) return { ...VACIO };
+  return {
+    teorico: Number(datos.teorico),
+    reservado: Number(datos.reservado),
+    colchon: Number(datos.colchon),
+    disponible: Number(datos.disponible)
+  };
 }
 
-// Serializa a los concurrentes sobre el mismo producto.
-export async function bloquearExistencia(tx, tenantId, productoId) {
-  await tx.query(
-    "select 1 from existencias where tenant_id = $1 and producto_id = $2 for update",
-    [tenantId, productoId]
-  );
-}
-
-export async function disponibleEnTx(tx, tenantId, productoId) {
-  const { rows } = await tx.query(
-    "select * from v_disponible where tenant_id = $1 and producto_id = $2",
-    [tenantId, productoId]
-  );
-  return rows[0] ?? { teorico: 0, reservado: 0, colchon: 0, disponible: 0 };
-}
-
-export async function insertarReserva(tx, r) {
-  await tx.query(
-    `insert into reservas (tenant_id, producto_id, pedido_id, cantidad, expira_en)
-     values ($1, $2, $3, $4, now() + ($5 || ' minutes')::interval)`,
-    [r.tenantId, r.productoId, r.pedidoId, r.cantidad, r.minutosVigencia]
+export async function insertarReserva(r) {
+  const expira = new Date(Date.now() + (r.minutosVigencia ?? 120) * 60000).toISOString();
+  return oTirar(
+    await supabase.from("reservas").insert({
+      tenant_id: r.tenantId,
+      producto_id: r.productoId,
+      pedido_id: r.pedidoId,
+      cantidad: r.cantidad,
+      expira_en: expira
+    }).select().single(),
+    "crear reserva"
   );
 }
 
 export async function liberarVencidas() {
-  const { rowCount } = await consultar(
-    "update reservas set estado = 'liberada' where estado = 'activa' and expira_en <= now()"
+  const filas = oTirar(
+    await supabase.from("reservas")
+      .update({ estado: "liberada" })
+      .eq("estado", "activa")
+      .lt("expira_en", new Date().toISOString())
+      .select("id"),
+    "liberar reservas vencidas"
   );
-  return rowCount;
+  return filas.length;
 }
