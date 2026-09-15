@@ -44,6 +44,37 @@ export async function crear(p) {
   );
 }
 
+export async function crearRapido(p) {
+  return oTirar(
+    await supabase.rpc("crear_producto_rapido", {
+      p_id: p.id,
+      p_tenant_id: p.tenantId,
+      p_usuario_id: p.usuarioId,
+      p_nombre: p.nombre,
+      p_precio: p.precio,
+      p_unidad: p.unidad,
+      p_codigo: p.codigo ?? null
+    }),
+    "registrar producto desde la caja"
+  );
+}
+
+// Lo que llega undefined no se manda, y la función lo deja como estaba.
+export async function completar(tenantId, id, c) {
+  return oTirar(
+    await supabase.rpc("completar_producto", {
+      p_tenant_id: tenantId,
+      p_id: id,
+      p_nombre: c.nombre,
+      p_categoria: c.categoria,
+      p_precio: c.precio,
+      p_costo: c.costo,
+      p_stock_minimo: c.stockMinimo
+    }),
+    "completar producto"
+  );
+}
+
 export async function equivalentes(tenantId, productoId) {
   // Se trae la relación con el producto anidado: la REST resuelve el join
   // por la llave foránea, sin que haya que escribir SQL.

@@ -46,6 +46,10 @@ export function crearApp() {
   //   bodega         mueve inventario y crea productos
   //   administrador  todo, más el tablero y los usuarios
   const bodega = ["administrador", "bodega"];
+  // Registrar un código desconocido con nombre y precio lo puede hacer
+  // cualquiera con sesión, para no frenar la fila. Queda por revisar y bodega
+  // lo completa. Va antes de /catalogo, que exige ser bodega para escribir.
+  app.use("/catalogo/rapido", requiereSesion, catalogo.rutasRapidas);
   app.use("/catalogo", requiereSesion, soloEscriben(...bodega), catalogo.rutas);
   app.use("/inventario", requiereSesion, soloEscriben(...bodega), inventario.rutas);
   app.use("/disponibilidad", requiereSesion, permitir(...bodega), disponibilidad.rutas);

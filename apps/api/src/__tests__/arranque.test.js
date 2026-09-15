@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { nuevoId } from "@mv/compartido";
 
 // Levanta la API completa —todos los módulos, las rutas, el manejo de errores,
 // el login y los permisos— contra la base local en memoria, y le hace
@@ -46,7 +47,7 @@ async function pedir(metodo, ruta, { cuerpo, token, cookie, sinJson = false } = 
       ...(cuerpo !== undefined && !sinJson ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(cookie ? { cookie: `mv_sesion=${cookie}` } : {}),
-      "Idempotency-Key": "01a08c56-f6dd-75c1-b455-9a85929daf99"
+      "Idempotency-Key": nuevoId()
     },
     body: cuerpo === undefined ? undefined : typeof cuerpo === "string" ? cuerpo : JSON.stringify(cuerpo)
   });
@@ -174,6 +175,23 @@ test("el cajero entra, tiene que cambiar la contraseña, y después solo vende",
   assert.equal((await pedir("POST", "/inventario/movimientos", { token, cuerpo: {} })).estado, 403);
   // A ventas sí entra: responde por los datos, no por el permiso.
   assert.equal((await pedir("POST", "/ventas", { token, cuerpo: {} })).estado, 400);
+
+  // Catálogo progresivo: un código desconocido lo registra la misma cajera y lo vende.
+  const rapido = await pedir("POST", "/catalogo/rapido", {
+    token, cuerpo: { codigo: "7701234500011", nombre: "Galletas de caja", precio: 2500 }
+  });
+  assert.equal(rapido.estado, 201, JSON.stringify(rapido.cuerpo));
+  assert.equal(rapido.cuerpo.producto.porRevisar, true);
+  sesiones.rapidoId = rapido.cuerpo.producto.id;
+
+  const vendido = await pedir("POST", "/ventas", {
+    token, cuerpo: { metodoPago: "efectivo", lineas: [{ productoId: sesiones.rapidoId, cantidad: 1 }] }
+  });
+  assert.equal(vendido.estado, 201, JSON.stringify(vendido.cuerpo));
+  assert.equal(vendido.cuerpo.venta.total, 2500);
+
+  // Completarlo es de bodega, no de caja.
+  assert.equal((await pedir("PATCH", `/catalogo/productos/${sesiones.rapidoId}`, { token, cuerpo: { costo: 1800 } })).estado, 403);
 });
 
 test("la contraseña equivocada no dice si la cédula existe, y cinco fallos bloquean", async () => {
@@ -228,4 +246,12 @@ test("el administrador desactiva al cajero; no puede quitarse a sí mismo", asyn
   const lista = await pedir("GET", "/auth/usuarios", { token });
   assert.equal(lista.cuerpo.length, 2);
   assert.ok(lista.cuerpo.every((u) => u.claveHash === undefined));
+
+  // El administrador completa el producto que la cajera registró.
+  const completo = await pedir("PATCH", `/catalogo/productos/${sesiones.rapidoId}`, {
+    token, cuerpo: { categoria: "Abarrotes", costo: 1800, stockMinimo: 6 }
+  });
+  assert.equal(completo.estado, 200, JSON.stringify(completo.cuerpo));
+  assert.equal(completo.cuerpo.porRevisar, false);
+  assert.equal(completo.cuerpo.categoria, "Abarrotes");
 });

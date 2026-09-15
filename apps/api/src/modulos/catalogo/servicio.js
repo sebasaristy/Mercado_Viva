@@ -44,14 +44,8 @@ const MENSAJES_CREAR = {
   cantidad_invalida: "La cantidad inicial no es válida. Si se vende por unidad, no lleva decimales."
 };
 
-export async function crear(usuario, entrada) {
-  const r = await repo.crear({
-    ...entrada,
-    tenantId: usuario.tenantId,
-    usuarioId: usuario.id,
-    movimientoId: entrada.cantidadInicial > 0 ? nuevoId() : null
-  });
-
+// Lo mismo para crear desde bodega o desde la caja: la base responde igual.
+function resultadoDeCrear(r) {
   if (!r.ok) {
     if (r.error === "codigo_duplicado") {
       throw new ErrorDeNegocio(
@@ -63,8 +57,34 @@ export async function crear(usuario, entrada) {
     }
     throw new ErrorDeNegocio(MENSAJES_CREAR[r.error] ?? "No se pudo crear el producto.", r.error, 400);
   }
-
   return { producto: r.producto, yaExistia: r.yaExistia };
+}
+
+export async function crear(usuario, entrada) {
+  return resultadoDeCrear(await repo.crear({
+    ...entrada,
+    tenantId: usuario.tenantId,
+    usuarioId: usuario.id,
+    movimientoId: entrada.cantidadInicial > 0 ? nuevoId() : null
+  }));
+}
+
+// Desde la caja, con lo mínimo. Queda por revisar para que bodega lo complete.
+export async function crearRapido(usuario, entrada) {
+  return resultadoDeCrear(await repo.crearRapido({
+    ...entrada,
+    tenantId: usuario.tenantId,
+    usuarioId: usuario.id
+  }));
+}
+
+export async function completar(tenantId, id, cambios) {
+  const r = await repo.completar(tenantId, id, cambios);
+  if (!r.ok) {
+    if (r.error === "no_encontrado") throw new ErrorNoEncontrado(`producto ${id}`);
+    throw new ErrorDeNegocio(MENSAJES_CREAR[r.error] ?? "No se pudo guardar el producto.", r.error, 400);
+  }
+  return r.producto;
 }
 
 export const equivalentesDe = (tenantId, productoId) =>

@@ -5,7 +5,7 @@ import { ejecutar } from "../../local/operar.js";
 import { guardarEnCache } from "../../local/catalogo.js";
 import { conUnidad, margen, num, pesos, soloDigitos } from "../../lib/formato.js";
 
-const CATEGORIAS = ["Abarrotes", "Lácteos", "Bebidas", "Frutas", "Verduras", "Carnes", "Panadería", "Aseo", "Otros"];
+export const CATEGORIAS = ["Abarrotes", "Lácteos", "Bebidas", "Frutas", "Verduras", "Carnes", "Panadería", "Aseo", "Otros"];
 
 // Un código que no existe no es un callejón sin salida: se crea el producto
 // aquí mismo y, si llegó mercancía, entra en el mismo paso.

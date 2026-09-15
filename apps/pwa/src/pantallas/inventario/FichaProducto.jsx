@@ -1,12 +1,129 @@
 import { useState } from "react";
 import { validarCantidad } from "@mv/compartido";
-import { Aviso, Boton, Cantidad, EstadoStock, Segmentado } from "../../componentes/ui.jsx";
+import { Aviso, Boton, Campo, Cantidad, Chips, EstadoStock, Segmentado } from "../../componentes/ui.jsx";
 import { avisar } from "../../componentes/Avisos.jsx";
+import { Icono } from "../../componentes/Icono.jsx";
+import { cambiarJson } from "../../api/cliente.js";
 import { ejecutar } from "../../local/operar.js";
 import { guardarEnCache } from "../../local/catalogo.js";
-import { conUnidad, corta, margen, num, pesos } from "../../lib/formato.js";
+import { conUnidad, corta, margen, num, pesos, soloDigitos } from "../../lib/formato.js";
+import { CATEGORIAS } from "./NuevoProducto.jsx";
 
 const MOTIVOS = ["Vencido", "Dañado", "Robo", "Otro"];
+
+// Un producto que la caja registró con solo nombre y precio. Bodega le pone
+// categoría, costo y mínimo, y lo cuenta: con eso deja de estar por revisar.
+function CompletarDatos({ producto, onCompletado }) {
+  const [f, setF] = useState({ nombre: producto.nombre, precio: String(Math.round(producto.precio)), categoria: "", costo: "", stockMinimo: "", contados: "" });
+  const [errores, setErrores] = useState({});
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const poner = (campo) => (valor) => {
+    setF((x) => ({ ...x, [campo]: valor }));
+    setErrores((e) => ({ ...e, [campo]: null }));
+    setError(null);
+  };
+  const m = margen(f.precio, f.costo);
+
+  async function guardar() {
+    const e = {};
+    if (f.nombre.trim().length < 2) e.nombre = "Escribe el nombre del producto.";
+    if (!(Number(f.precio) > 0)) e.precio = "Escribe el precio de venta.";
+    if (!f.categoria) e.categoria = "Elige una categoría.";
+    // Contar cero es válido (no hay ninguno); lo que no vale son decimales por unidad.
+    if (f.contados !== "") {
+      const contados = Number(f.contados);
+      if (!Number.isFinite(contados) || contados < 0) e.contados = "La cantidad no es válida.";
+      else if (producto.unidad === "unidad" && !Number.isInteger(contados)) e.contados = "Por unidad no lleva decimales.";
+    }
+    setErrores(e);
+    if (Object.keys(e).length) return;
+
+    setGuardando(true);
+    try {
+      const actualizado = await cambiarJson(`/catalogo/productos/${producto.id}`, {
+        nombre: f.nombre.trim(),
+        precio: Number(f.precio),
+        categoria: f.categoria,
+        costo: Number(f.costo || 0),
+        stockMinimo: Number(f.stockMinimo || 0)
+      });
+
+      // Lo contado se registra como entrada o salida por la diferencia: el
+      // stock sigue siendo un libro de movimientos, nunca un número pisado.
+      let existencia = Number(actualizado.existencia);
+      if (f.contados !== "") {
+        const diferencia = Math.round((Number(f.contados) - existencia) * 1000) / 1000;
+        if (diferencia !== 0) {
+          const r = await ejecutar("/inventario/movimientos", {
+            productoId: producto.id,
+            tipo: diferencia > 0 ? "ENTRADA" : "SALIDA",
+            cantidad: Math.abs(diferencia),
+            motivo: "Conteo al revisar producto registrado en caja"
+          });
+          existencia = r.enLinea ? Number(r.datos.existencia) : Number(f.contados);
+        }
+      }
+
+      const final = { ...actualizado, existencia, estado: estadoDe(existencia, actualizado.stockMinimo) };
+      await guardarEnCache(final);
+      onCompletado(final);
+      avisar({ titulo: `«${final.nombre}» quedó revisado`, texto: `Ahora hay ${conUnidad(existencia, final.unidad)}.` });
+    } catch (err) {
+      if (err.campo) setErrores((x) => ({ ...x, [err.campo]: err.message }));
+      else setError(err.deRed ? "Completar el producto necesita conexión. Intenta cuando vuelva la señal." : err.message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 border-b border-borde bg-acento-suave/50 p-4">
+      <div>
+        <p className="flex items-center gap-2 font-semibold text-acento">
+          <Icono nombre="alerta" tam={18} />
+          Registrado desde la caja: complétalo
+        </p>
+        <p className="mt-0.5 text-[15px] text-tinta">
+          Se registró con solo nombre y precio para no frenar la venta. Ponle categoría y costo, y cuenta cuántos hay.
+        </p>
+      </div>
+
+      <Campo id="rev-nombre" etiqueta="Nombre" value={f.nombre} autoComplete="off"
+        onChange={(e) => poner("nombre")(e.target.value)} error={errores.nombre} />
+      <Chips etiqueta="Categoría" opciones={CATEGORIAS} valor={f.categoria} onCambio={poner("categoria")} error={errores.categoria} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <Campo id="rev-precio" etiqueta={producto.unidad === "kg" ? "Precio por kilo" : "Precio de venta"} prefijo="$" inputMode="numeric"
+          value={f.precio} onChange={(e) => poner("precio")(soloDigitos(e.target.value))} error={errores.precio} />
+        <Campo id="rev-costo" etiqueta="Lo que te cuesta" prefijo="$" inputMode="numeric" placeholder="0"
+          value={f.costo} onChange={(e) => poner("costo")(soloDigitos(e.target.value))} />
+      </div>
+
+      {m && Number(f.costo) > 0 && (
+        <p className={`rounded-pieza px-3.5 py-2.5 text-[15px] ${m.valor < 0 ? "bg-peligro-suave text-peligro" : "bg-panel text-tinta"}`}>
+          {m.valor < 0
+            ? `Se está vendiendo ${pesos(-m.valor)} por debajo del costo.`
+            : <>Ganas <strong className="cifras">{pesos(m.valor)}</strong> · margen <strong className="cifras">{num(m.pct)} %</strong></>}
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Campo id="rev-minimo" etiqueta="Avisar si quedan menos de" inputMode="decimal" sufijo={producto.unidad === "kg" ? "kg" : "und"} placeholder="0"
+          value={f.stockMinimo} onChange={(e) => poner("stockMinimo")(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} />
+        <Campo id="rev-contados" etiqueta="¿Cuántos hay en estante?" inputMode="decimal" sufijo={producto.unidad === "kg" ? "kg" : "und"}
+          placeholder={num(producto.existencia)} ayuda="Opcional"
+          value={f.contados} onChange={(e) => poner("contados")(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))} error={errores.contados} />
+      </div>
+
+      {error && <Aviso tono="error" titulo="No se guardó">{error}</Aviso>}
+
+      <Boton tono="principal" icono="listo" cargando={guardando} onClick={guardar}>
+        Guardar y marcar como revisado
+      </Boton>
+    </div>
+  );
+}
 
 const estadoDe = (existencia, minimo) =>
   existencia <= 0 ? "agotado" : existencia <= Number(minimo) ? "bajo" : "ok";
@@ -105,6 +222,8 @@ export function FichaProducto({ producto, pesoKg, onActualizado, onCerrar }) {
           </dd>
         </div>
       </dl>
+
+      {producto.porRevisar && <CompletarDatos producto={producto} onCompletado={onActualizado} />}
 
       <div className="flex flex-col gap-4 p-4">
         <Segmentado

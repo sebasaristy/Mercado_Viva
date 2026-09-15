@@ -17,7 +17,7 @@ export function Inventario() {
   const [vista, setVista] = useState({ tipo: "inicio" });
   const [catalogo, setCatalogo] = useState({ estado: "cargando", productos: [] });
   const [busqueda, setBusqueda] = useState("");
-  const [soloPorPedir, setSoloPorPedir] = useState(false);
+  const [filtro, setFiltro] = useState("todos");
 
   const cargarCatalogo = useCallback(async () => {
     setCatalogo((c) => ({ ...c, estado: c.productos.length ? "actualizando" : "cargando" }));
@@ -70,12 +70,19 @@ export function Inventario() {
     [catalogo.productos]
   );
 
+  // Los que la caja registró con lo mínimo y esperan costo, categoría y conteo.
+  const porRevisar = useMemo(
+    () => catalogo.productos.filter((p) => p.porRevisar),
+    [catalogo.productos]
+  );
+
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return (soloPorPedir ? porPedir : catalogo.productos).filter(
+    const base = filtro === "pedir" ? porPedir : filtro === "revisar" ? porRevisar : catalogo.productos;
+    return base.filter(
       (p) => !q || p.nombre.toLowerCase().includes(q) || (p.codigoBarras ?? "").includes(q)
     );
-  }, [catalogo.productos, porPedir, busqueda, soloPorPedir]);
+  }, [catalogo.productos, porPedir, porRevisar, busqueda, filtro]);
 
   const seleccionado = vista.tipo === "producto" ? vista.producto.id : null;
 
@@ -175,10 +182,13 @@ export function Inventario() {
                   className="min-h-11 w-full rounded-pieza border-2 border-borde bg-panel pl-10 pr-3 text-[16px] placeholder:text-tenue/70 focus:border-acento"
                 />
               </div>
-              <div role="group" aria-label="Filtrar productos" className="flex gap-2">
-                <Filtro activo={!soloPorPedir} onClick={() => setSoloPorPedir(false)}>Todos</Filtro>
-                <Filtro activo={soloPorPedir} onClick={() => setSoloPorPedir(true)}>
+              <div role="group" aria-label="Filtrar productos" className="flex flex-wrap gap-2">
+                <Filtro activo={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos</Filtro>
+                <Filtro activo={filtro === "pedir"} onClick={() => setFiltro("pedir")}>
                   Por pedir <span className="cifras">{porPedir.length}</span>
+                </Filtro>
+                <Filtro activo={filtro === "revisar"} onClick={() => setFiltro("revisar")}>
+                  Por revisar <span className={"cifras " + (porRevisar.length ? "text-acento" : "")}>{porRevisar.length}</span>
                 </Filtro>
               </div>
             </div>
@@ -216,15 +226,19 @@ export function Inventario() {
                 <p className="font-semibold">
                   {catalogo.productos.length === 0
                     ? "Todavía no hay productos"
-                    : soloPorPedir
+                    : filtro === "pedir"
                     ? "Nada por pedir"
+                    : filtro === "revisar"
+                    ? "Nada por revisar"
                     : "Nada coincide con la búsqueda"}
                 </p>
                 <p className="max-w-[40ch] text-[15px] text-tenue">
                   {catalogo.productos.length === 0
                     ? "Escanea el primero: si no existe, lo creas en ese mismo paso."
-                    : soloPorPedir
+                    : filtro === "pedir"
                     ? "Todos los productos tienen más stock que su mínimo."
+                    : filtro === "revisar"
+                    ? "Aquí aparecen los productos que la caja registró con solo nombre y precio."
                     : "Prueba con otra palabra o escanea el código."}
                 </p>
               </div>
@@ -252,7 +266,14 @@ export function Inventario() {
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <span className="cifras text-[16px] font-semibold">{corta(p.existencia, p.unidad)}</span>
-                        <EstadoStock estado={p.estado} />
+                        {p.porRevisar ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-acento-suave px-2 py-0.5 text-xs font-semibold text-acento">
+                            <Icono nombre="alerta" tam={13} />
+                            Por revisar
+                          </span>
+                        ) : (
+                          <EstadoStock estado={p.estado} />
+                        )}
                       </div>
                     </button>
                   </li>

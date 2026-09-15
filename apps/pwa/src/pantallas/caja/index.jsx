@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Contenido, Encabezado } from "../../componentes/Estructura.jsx";
 import { LectorCodigo } from "../../componentes/LectorCodigo.jsx";
 import { Aviso, Boton, Campo, Cantidad, Seccion, Segmentado } from "../../componentes/ui.jsx";
 import { Icono } from "../../componentes/Icono.jsx";
+import { avisar } from "../../componentes/Avisos.jsx";
 import { buscarProducto, ejecutar } from "../../local/operar.js";
-import { productosEnCache, refrescarCatalogo } from "../../local/catalogo.js";
+import { guardarEnCache, productosEnCache, refrescarCatalogo } from "../../local/catalogo.js";
 import { corta, hora, num, pesos, soloDigitos } from "../../lib/formato.js";
-import { usarSesion } from "../../api/sesion.js";
 
 const PAGOS = [
   { valor: "efectivo", texto: "Efectivo", icono: "efectivo" },
@@ -28,8 +27,6 @@ function billetesProbables(total) {
 }
 
 export function Caja() {
-  const navigate = useNavigate();
-  const puedeCrear = usarSesion((s) => s.usuario?.rol !== "cajero");
   const [lineas, setLineas] = useState([]);
   const [vaciadas, setVaciadas] = useState(null);
   const [metodo, setMetodo] = useState("efectivo");
@@ -67,7 +64,7 @@ export function Caja() {
     try {
       const r = await buscarProducto(codigo);
       if (!r.producto) {
-        setAviso({ tipo: "noExiste", codigo: r.codigo });
+        setAviso({ tipo: "noExiste", codigo: r.codigo, pesoKg: r.pesoKg });
         return;
       }
       agregar(r.producto, r.pesoKg ?? 1);
@@ -221,20 +218,26 @@ export function Caja() {
             </Seccion>
 
             {aviso?.tipo === "noExiste" && (
-              <Aviso
-                tono="atencion"
-                titulo={`El código ${aviso.codigo} no está en el catálogo`}
-                accion={puedeCrear && (
-                  <Boton tam="chico" icono="mas"
-                    onClick={() => navigate(`/inventario?codigo=${encodeURIComponent(aviso.codigo)}`)}>
-                    Crearlo en Inventario
-                  </Boton>
-                )}
-              >
-                {puedeCrear
-                  ? "Créalo con su precio y vuelve a escanearlo aquí."
-                  : "Pídele a bodega o al administrador que lo registre. Mientras tanto búscalo por nombre."}
-              </Aviso>
+              <RegistroRapido
+                key={aviso.codigo}
+                codigo={aviso.codigo}
+                pesoKg={aviso.pesoKg}
+                onCancelar={() => setAviso(null)}
+                onRegistrado={(producto, { enLinea, yaExistia }) => {
+                  setCatalogo((c) => (c.some((p) => p.id === producto.id) ? c : [...c, producto]));
+                  agregar(producto, aviso.pesoKg ?? 1);
+                  setAviso(null);
+                  avisar({
+                    tono: enLinea ? "exito" : "atencion",
+                    titulo: yaExistia ? `Ya estaba: «${producto.nombre}»` : `Registraste «${producto.nombre}»`,
+                    texto: yaExistia
+                      ? "Se agregó a la venta."
+                      : enLinea
+                      ? "Ya está en la venta. Bodega completa costo y stock en Inventario → Por revisar."
+                      : "Sin conexión: está en la venta y se registra solo cuando vuelva."
+                  });
+                }}
+              />
             )}
             {aviso?.tipo === "sinConexion" && (
               <Aviso tono="info" titulo="Sin conexión">
@@ -356,6 +359,107 @@ export function Caja() {
         </div>
       </Contenido>
     </>
+  );
+}
+
+// Código desconocido en plena venta: se registra con lo mínimo y se agrega a la
+// venta en curso, sin salir de la caja. Funciona también sin señal: el producto
+// y la venta van a la cola en ese orden y se suben juntos.
+function RegistroRapido({ codigo, pesoKg, onRegistrado, onCancelar }) {
+  const [nombre, setNombre] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [unidad, setUnidad] = useState(pesoKg ? "kg" : "unidad");
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const errorDe = (campo) => (error?.campo === campo ? error.mensaje : null);
+
+  async function registrar(e) {
+    e.preventDefault();
+    if (nombre.trim().length < 2) return setError({ campo: "nombre", mensaje: "Escribe el nombre como aparece en el empaque." });
+    if (!(Number(precio) > 0)) return setError({ campo: "precio", mensaje: "Escribe el precio de venta." });
+
+    setError(null);
+    setGuardando(true);
+    const cuerpo = { codigo, nombre: nombre.trim(), unidad, precio: Number(precio) };
+
+    try {
+      const r = await ejecutar("/catalogo/rapido", cuerpo);
+      const producto = r.enLinea
+        ? r.datos.producto
+        : {
+            id: r.id, codigoBarras: codigo, nombre: cuerpo.nombre, categoria: "Sin categoría",
+            unidad, precio: cuerpo.precio, costo: 0, stockMinimo: 0, existencia: 0,
+            estado: "agotado", porRevisar: true
+          };
+      await guardarEnCache(producto);
+      onRegistrado(producto, { enLinea: r.enLinea, yaExistia: Boolean(r.datos?.yaExistia) });
+    } catch (err) {
+      // Otra caja lo registró primero: se usa ese y listo.
+      if (err.codigo === "codigo_duplicado" && err.detalle?.producto) {
+        await guardarEnCache(err.detalle.producto);
+        onRegistrado(err.detalle.producto, { enLinea: true, yaExistia: true });
+      } else {
+        setError({ campo: err.campo ?? null, mensaje: err.message });
+      }
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <form onSubmit={registrar} noValidate aria-labelledby="rapido-titulo" className="rounded-pieza border-2 border-acento/60 bg-panel">
+      <div className="border-b border-borde bg-acento-suave px-4 py-3">
+        <h2 id="rapido-titulo" className="flex items-center gap-2 text-[17px] font-semibold text-acento">
+          <Icono nombre="alerta" tam={18} />
+          Producto nuevo: regístralo y sigue cobrando
+        </h2>
+        <p className="mt-0.5 text-[15px] text-tinta">
+          El código <span className="cifras font-semibold">{codigo}</span> no está en el catálogo.
+          Con nombre y precio basta; bodega completa el resto después.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 p-4">
+        {error && !error.campo && <Aviso tono="error" titulo="No se registró">{error.mensaje}</Aviso>}
+        <Campo
+          id="rapido-nombre"
+          etiqueta="Nombre"
+          placeholder="Ej: Galletas Ducales x3"
+          autoComplete="off"
+          autoFocus
+          value={nombre}
+          onChange={(e) => { setNombre(e.target.value); setError(null); }}
+          error={errorDe("nombre")}
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo
+            id="rapido-precio"
+            etiqueta={unidad === "kg" ? "Precio por kilo" : "Precio de venta"}
+            prefijo="$"
+            inputMode="numeric"
+            placeholder="3200"
+            value={precio}
+            onChange={(e) => { setPrecio(soloDigitos(e.target.value)); setError(null); }}
+            error={errorDe("precio")}
+          />
+          <Segmentado
+            etiqueta="¿Cómo se vende?"
+            valor={unidad}
+            onCambio={setUnidad}
+            opciones={[
+              { valor: "unidad", texto: "Por unidad" },
+              { valor: "kg", texto: "Por kilo" }
+            ]}
+          />
+        </div>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <Boton onClick={onCancelar} className="sm:w-32">Cancelar</Boton>
+          <Boton type="submit" tono="principal" icono="mas" cargando={guardando} className="flex-1">
+            Registrar y agregar a la venta
+          </Boton>
+        </div>
+      </div>
+    </form>
   );
 }
 
