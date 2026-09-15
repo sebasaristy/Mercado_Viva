@@ -33,6 +33,12 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // La versión nueva toma el control apenas se descarga, sin recargar la
+        // pantalla: lo que se ve cambia la próxima vez que se abre la app. En
+        // iPhone la app casi nunca se cierra del todo, y sin esto una versión
+        // nueva podía quedarse esperando días.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
         // /api nunca se responde con la app guardada: si no hay red, que falle
