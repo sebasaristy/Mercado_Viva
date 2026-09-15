@@ -2,10 +2,11 @@ import express from "express";
 
 import { config } from "./plataforma/config.js";
 import { manejadorDeErrores } from "./plataforma/errores.js";
-import { requiereSesion } from "./plataforma/auth.js";
+import { requiereSesion, permitir, soloEscriben } from "./plataforma/auth.js";
 import { registrarPeticiones, imprimirEnTerminal } from "./plataforma/peticiones.js";
 import { montarPanelDev } from "./dev/index.js";
 
+import identidad from "./modulos/identidad/index.js";
 import catalogo from "./modulos/catalogo/index.js";
 import inventario from "./modulos/inventario/index.js";
 import disponibilidad from "./modulos/disponibilidad/index.js";
@@ -17,22 +18,43 @@ import tablero from "./modulos/tablero/index.js";
 export function crearApp() {
   const app = express();
 
-  app.use(express.json({ limit: "1mb" }));
+  app.disable("x-powered-by");
+  // Detrás de nginx. La IP real y si la conexión fue https llegan en cabeceras,
+  // y solo se les cree cuando las pone el proxy de esta misma máquina.
+  app.set("trust proxy", "loopback");
+
+  app.use((_req, res, siguiente) => {
+    res.set({
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "DENY"
+    });
+    siguiente();
+  });
+
+  app.use(express.json({ limit: "200kb" }));
   app.use(registrarPeticiones);
   if (config.esDesarrollo) app.use(imprimirEnTerminal);
 
   app.get("/salud", (_req, res) => res.json({ ok: true, modo: config.entorno, datos: config.datos }));
 
-  // Cada módulo expone sus rutas en su index. app.js no sabe qué hay adentro.
-  app.use("/catalogo", requiereSesion, catalogo.rutas);
-  app.use("/inventario", requiereSesion, inventario.rutas);
-  app.use("/disponibilidad", requiereSesion, disponibilidad.rutas);
-  app.use("/conteo", requiereSesion, conteo.rutas);
-  app.use("/pedidos", requiereSesion, pedidos.rutas);
-  app.use("/ventas", requiereSesion, ventas.rutas);
-  app.use("/tablero", requiereSesion, tablero.rutas);
+  // Entrar, salir y administrar usuarios. Cada ruta de adentro decide si pide sesión.
+  app.use("/auth", identidad.rutas);
 
-  // Solo en desarrollo. Sin sesión: es una herramienta local, no una API.
+  // Quién puede qué. Está aquí, junto, para que se lea de un vistazo:
+  //   cajero         vende; lee el catálogo para escanear
+  //   bodega         mueve inventario y crea productos
+  //   administrador  todo, más el tablero y los usuarios
+  const bodega = ["administrador", "bodega"];
+  app.use("/catalogo", requiereSesion, soloEscriben(...bodega), catalogo.rutas);
+  app.use("/inventario", requiereSesion, soloEscriben(...bodega), inventario.rutas);
+  app.use("/disponibilidad", requiereSesion, permitir(...bodega), disponibilidad.rutas);
+  app.use("/conteo", requiereSesion, permitir(...bodega), conteo.rutas);
+  app.use("/pedidos", requiereSesion, permitir(...bodega), pedidos.rutas);
+  app.use("/ventas", requiereSesion, permitir("administrador", "cajero"), ventas.rutas);
+  app.use("/tablero", requiereSesion, permitir("administrador"), tablero.rutas);
+
+  // Solo con herramientas de desarrollo encendidas. Sin sesión: es local, no una API.
   montarPanelDev(app);
 
   app.use(manejadorDeErrores);

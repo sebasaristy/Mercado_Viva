@@ -4,16 +4,19 @@ import { Boton } from "./ui.jsx";
 import { ZonaAvisos } from "./Avisos.jsx";
 import { usarConexion } from "../local/conexion.js";
 import { subirPendientes } from "../local/sync.js";
+import { usarSesion } from "../api/sesion.js";
+import { seccionesDe, nombreDeRol } from "../lib/roles.js";
 
-const SECCIONES = [
-  { a: "/inventario", icono: "inventario", texto: "Inventario", ayuda: "Entradas y productos nuevos" },
-  { a: "/caja", icono: "caja", texto: "Caja", ayuda: "Registrar ventas" },
-  { a: "/tablero", icono: "tablero", texto: "Tablero", ayuda: "Cómo va el negocio" }
-];
+const CUENTA = { a: "/cuenta", icono: "cuenta", texto: "Cuenta" };
 
 // En computador: menú a la izquierda. En celular y tablet: abajo, donde llega
 // el pulgar. Lo mismo, acomodado a cómo se sostiene cada equipo.
+// Cada quien ve solo las secciones de su rol.
 export function Estructura({ children }) {
+  const usuario = usarSesion((s) => s.usuario);
+  const SECCIONES = seccionesDe(usuario.rol);
+  const abajo = [...SECCIONES.filter((s) => !s.soloEscritorio), CUENTA];
+
   return (
     <div className="min-h-dvh bg-fondo lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
       <aside className="hidden border-r border-borde bg-panel lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col">
@@ -39,21 +42,37 @@ export function Estructura({ children }) {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto border-t border-borde p-4">
-          <EstadoConexionCorto />
+        <div className="mt-auto flex flex-col gap-2 border-t border-borde p-3">
+          <NavLink
+            to="/cuenta"
+            className={({ isActive }) =>
+              "flex items-center gap-3 rounded-pieza px-3 py-2 transition-colors duration-100 " +
+              (isActive ? "bg-acento-suave text-acento" : "hover:bg-panel-alt")
+            }
+          >
+            <Icono nombre="cuenta" tam={21} />
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-semibold">{usuario.nombre}</span>
+              <span className="text-xs text-tenue">{nombreDeRol(usuario.rol)}</span>
+            </span>
+          </NavLink>
+          <div className="px-3 pb-1">
+            <EstadoConexionCorto />
+          </div>
         </div>
       </aside>
 
-      <div className="flex min-h-dvh min-w-0 flex-col pb-20 lg:pb-0">
+      <div className="flex min-h-dvh min-w-0 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
         <BarraConexion />
         <main className="flex-1">{children}</main>
       </div>
 
       <nav
         aria-label="Secciones"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-borde bg-panel lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid border-t border-borde bg-panel pb-[env(safe-area-inset-bottom)] lg:hidden"
+        style={{ gridTemplateColumns: `repeat(${abajo.length}, minmax(0, 1fr))` }}
       >
-        {SECCIONES.map((s) => (
+        {abajo.map((s) => (
           <NavLink
             key={s.a}
             to={s.a}

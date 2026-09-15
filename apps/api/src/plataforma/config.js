@@ -2,6 +2,7 @@
 // así se sabe de un vistazo qué necesita la app para arrancar, y falla de una
 // con un mensaje claro en vez de reventar a mitad de una petición.
 import { readFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 const raiz = path.resolve(process.cwd());
@@ -98,9 +99,39 @@ export const config = {
   // Mientras haya una sola sede. Cuando entren más, sale del token del usuario.
   tenantPorDefecto: process.env.TENANT_ID ?? "00000000-0000-0000-0000-000000000001",
 
-  // Sin login mientras se arma el resto. NUNCA en producción: se impide abajo.
-  authDesactivada: process.env.AUTH_DESACTIVADA === "true" || datos === "local"
+  sesion: {
+    ...secretoDeSesion(),
+    // El token de acceso vence rápido; la sesión del equipo dura semanas y se
+    // renueva sola mientras se use.
+    segundosAcceso: 600,
+    diasSesion: Number(process.env.SESION_DIAS ?? 30),
+    nombreCookie: "mv_sesion",
+    // La ruta como la ve el NAVEGADOR. nginx y Vite le quitan /api antes de
+    // llegar aquí, pero la cookie se guarda con la ruta de afuera.
+    rutaCookie: process.env.COOKIE_RUTA ?? "/api/auth"
+  },
+
+  // Panel /dev y la causa de los errores 500 en la respuesta. Útiles en el
+  // computador de cada uno; en un servidor abierto a internet se apagan con
+  // HERRAMIENTAS_DEV=false aunque siga en modo desarrollo.
+  herramientasDev: esDesarrollo && process.env.HERRAMIENTAS_DEV !== "false",
+
+  // Salta el login para probar endpoints con curl. NUNCA en producción: se impide abajo.
+  authDesactivada: process.env.AUTH_DESACTIVADA === "true"
 };
+
+// Con qué se firman los tokens de acceso. En desarrollo, si falta, se inventa
+// uno al arrancar: los tokens de 10 minutos dejan de valer al reiniciar, pero
+// la PWA los renueva sola con la cookie de sesión, así que nadie lo nota.
+function secretoDeSesion() {
+  const v = process.env.SESION_SECRETO;
+  if (puesta(v) && v.length >= 32) return { secreto: v, secretoTemporal: false };
+  if (!esDesarrollo) {
+    console.error("\nFalta SESION_SECRETO (mínimo 32 caracteres).\n  Genera uno con: openssl rand -base64 48\n");
+    process.exit(1);
+  }
+  return { secreto: randomBytes(48).toString("base64url"), secretoTemporal: true };
+}
 
 if (config.authDesactivada && !config.esDesarrollo) {
   console.error("\nAUTH_DESACTIVADA=true no se permite fuera de desarrollo.\n");

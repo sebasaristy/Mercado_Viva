@@ -1,4 +1,5 @@
 import { enviarJson } from "../api/cliente.js";
+import { usarSesion } from "../api/sesion.js";
 import * as cola from "./cola.js";
 import { pedirAlmacenamientoPersistente } from "./base.js";
 import { usarConexion } from "./conexion.js";
@@ -15,7 +16,8 @@ export async function actualizarContadores() {
 
 // Sube lo que quedó guardado sin conexión, en el orden en que ocurrió.
 export async function subirPendientes() {
-  if (subiendo) return;
+  const yo = usarSesion.getState().usuario;
+  if (subiendo || !yo) return;
   subiendo = true;
   const estado = usarConexion.getState();
 
@@ -25,11 +27,16 @@ export async function subirPendientes() {
 
     for (const item of items) {
       if (item.proximoIntento > Date.now()) continue;
+      // Lo de otra persona espera a que esa persona vuelva a entrar.
+      if (item.usuarioId && item.usuarioId !== yo.id) continue;
       try {
         await enviarJson(item.ruta, item.cuerpo, item.id);
         await cola.marcarSubida(item.id);
         estado.actualizar({ hayServidor: true, ultimoContacto: new Date() });
       } catch (e) {
+        // Sesión vencida: no es culpa de la operación. Queda como estaba y
+        // se sube cuando la persona vuelva a entrar.
+        if (e.estado === 401) break;
         await cola.marcarFallida(item.id, e, e.deRed);
         if (e.deRed) {
           estado.actualizar({ hayServidor: false });
@@ -75,6 +82,16 @@ export function arrancarSync() {
   });
   setInterval(ciclo, 15000);
 
+  // Al entrar alguien: se trae el catálogo y se sube lo suyo que esperaba.
+  usarSesion.subscribe((ahora, antes) => {
+    if (ahora.usuario?.id && ahora.usuario.id !== antes.usuario?.id) {
+      refrescarCatalogo().catch(() => { /* sin servidor: se usa la copia local */ });
+      ciclo();
+    }
+  });
+
   ciclo();
-  refrescarCatalogo().catch(() => { /* sin servidor: se usa la copia local */ });
+  if (usarSesion.getState().usuario) {
+    refrescarCatalogo().catch(() => { /* sin servidor: se usa la copia local */ });
+  }
 }

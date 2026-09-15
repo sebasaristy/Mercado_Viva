@@ -20,6 +20,12 @@ export class ErrorNoAutorizado extends ErrorDeNegocio {
   constructor() { super("Sesión inválida o vencida.", "no_autorizado", 401); }
 }
 
+export class ErrorProhibido extends ErrorDeNegocio {
+  constructor(mensaje = "Tu usuario no tiene permiso para esto.", codigo = "prohibido") {
+    super(mensaje, codigo, 403);
+  }
+}
+
 export class ErrorNoEncontrado extends ErrorDeNegocio {
   constructor(que) { super(`No existe: ${que}`, "no_encontrado", 404); }
 }
@@ -27,7 +33,8 @@ export class ErrorNoEncontrado extends ErrorDeNegocio {
 export function manejadorDeErrores(err, req, res, _siguiente) {
   if (err instanceof ErrorDeNegocio) {
     return res.status(err.estado).json({
-      error: err.codigo, mensaje: err.message, detalle: err.detalle
+      error: err.codigo, mensaje: err.message, detalle: err.detalle,
+      ...(err.campo ? { campo: err.campo } : {})
     });
   }
 
@@ -48,6 +55,6 @@ export function manejadorDeErrores(err, req, res, _siguiente) {
     error: "interno",
     mensaje: "Algo falló de nuestro lado.",
     // En desarrollo se muestra la causa: sin esto, depurar es adivinar.
-    ...(config.esDesarrollo ? { causa: err?.message } : {})
+    ...(config.herramientasDev ? { causa: err?.message } : {})
   });
 }

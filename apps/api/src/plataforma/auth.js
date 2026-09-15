@@ -1,38 +1,57 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { config } from "./config.js";
-import { ErrorNoAutorizado } from "./errores.js";
+import { verificarAcceso } from "./tokens.js";
+import { ErrorNoAutorizado, ErrorProhibido } from "./errores.js";
 
-const jwks = config.supabase.url
-  ? createRemoteJWKSet(new URL(`${config.supabase.url}/auth/v1/.well-known/jwks.json`))
-  : null;
+// Quién es y qué puede hacer.
+//
+// El token lo emite el módulo identidad y lo firma esta misma API. Aquí solo
+// se verifica, sin ir a la base: por eso vence a los 10 minutos.
 
-// Supabase emite el token; nosotros solo lo verificamos.
-// La PWA nunca toca la base directo: siempre pasa por aquí.
-export async function requiereSesion(req, _res, siguiente) {
-  // Atajo de desarrollo, para poder probar endpoints sin montar el login todavía.
-  // config.js impide que esto quede encendido fuera de desarrollo.
-  if (config.authDesactivada) {
-    req.usuario = {
-      id: "00000000-0000-0000-0000-0000000000de",
-      rol: "desarrollo",
-      tenantId: config.tenantPorDefecto
-    };
-    return siguiente();
-  }
+const USUARIO_DE_DESARROLLO = {
+  id: "00000000-0000-0000-0000-0000000000de",
+  rol: "administrador",
+  nombre: "Desarrollo",
+  tenantId: config.tenantPorDefecto,
+  sesionId: null,
+  debeCambiarClave: false
+};
 
-  try {
+function crearGuardia({ aunqueDebaCambiarClave = false } = {}) {
+  return async function guardia(req, _res, siguiente) {
+    // Atajo para probar endpoints con curl. config.js lo impide en producción.
+    if (config.authDesactivada) {
+      req.usuario = USUARIO_DE_DESARROLLO;
+      return siguiente();
+    }
+
     const encabezado = req.get("authorization") ?? "";
-    const token = encabezado.startsWith("Bearer ") ? encabezado.slice(7) : null;
-    if (!token || !jwks) throw new Error("sin token");
+    const token = encabezado.startsWith("Bearer ") ? encabezado.slice(7).trim() : null;
+    if (!token) return siguiente(new ErrorNoAutorizado());
 
-    const { payload } = await jwtVerify(token, jwks);
-    req.usuario = {
-      id: payload.sub,
-      rol: payload.rol ?? "operario",
-      tenantId: payload.tenant_id ?? config.tenantPorDefecto
-    };
+    try {
+      req.usuario = await verificarAcceso(token);
+    } catch {
+      return siguiente(new ErrorNoAutorizado());
+    }
+
+    // Con una contraseña que puso el administrador solo se puede hacer una cosa:
+    // cambiarla.
+    if (req.usuario.debeCambiarClave && !aunqueDebaCambiarClave) {
+      return siguiente(new ErrorProhibido("Primero cambia tu contraseña.", "debe_cambiar_clave"));
+    }
     siguiente();
-  } catch {
-    siguiente(new ErrorNoAutorizado());
-  }
+  };
 }
+
+export const requiereSesion = crearGuardia();
+export const requiereSesionAunqueDebaCambiarClave = crearGuardia({ aunqueDebaCambiarClave: true });
+
+// Solo estos roles.
+export const permitir = (...roles) => (req, _res, siguiente) =>
+  roles.includes(req.usuario?.rol) ? siguiente() : siguiente(new ErrorProhibido());
+
+// Leer lo puede cualquiera con sesión; cambiar algo, solo estos roles.
+export const soloEscriben = (...roles) => (req, res, siguiente) =>
+  req.method === "GET" || req.method === "HEAD"
+    ? siguiente()
+    : permitir(...roles)(req, res, siguiente);

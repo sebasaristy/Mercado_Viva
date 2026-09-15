@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Icono } from "./Icono.jsx";
 
 // Las piezas con las que se arman todas las pantallas. Si una pantalla necesita
@@ -79,6 +80,53 @@ export function Campo({ id, etiqueta, ayuda, error, prefijo, sufijo, className =
             {sufijo}
           </span>
         )}
+      </div>
+      {error ? (
+        <p id={`${id}-error`} role="alert" className="flex items-center gap-1.5 text-sm font-medium text-peligro">
+          <Icono nombre="alerta" tam={15} />
+          {error}
+        </p>
+      ) : ayuda ? (
+        <p id={`${id}-ayuda`} className="text-sm text-tenue">{ayuda}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// Contraseña con botón para verla. En el celular se escribe con los pulgares y
+// sin ver lo que se escribe se falla; el botón deja comprobarla antes de enviar.
+export function CampoClave({ id, etiqueta, ayuda, error, className = "", ...input }) {
+  const [visible, setVisible] = useState(false);
+  const descripcion = error ? `${id}-error` : ayuda ? `${id}-ayuda` : undefined;
+  return (
+    <div className={"flex flex-col gap-1.5 " + className}>
+      <label htmlFor={id} className="text-sm font-semibold text-tinta">{etiqueta}</label>
+      <div className="relative">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={descripcion}
+          className={
+            "min-h-12 w-full rounded-pieza border-2 bg-panel pl-3.5 pr-14 text-[17px] text-tinta " +
+            "placeholder:text-tenue/60 transition-colors duration-100 focus:border-acento " +
+            (error ? "border-peligro" : "border-borde-fuerte")
+          }
+          {...input}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={visible}
+          aria-controls={id}
+          className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-pieza text-tenue hover:text-tinta"
+        >
+          <Icono nombre={visible ? "ojoTachado" : "ojo"} tam={20} />
+        </button>
       </div>
       {error ? (
         <p id={`${id}-error`} role="alert" className="flex items-center gap-1.5 text-sm font-medium text-peligro">

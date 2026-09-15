@@ -13,7 +13,7 @@ import * as estado from "./estado.js";
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 
 export function montarPanelDev(app) {
-  if (!config.esDesarrollo) return null;
+  if (!config.herramientasDev) return null;
 
   const rutas = Router();
 
@@ -26,7 +26,7 @@ export function montarPanelDev(app) {
     if (config.datos === "local") {
       return res.json({
         entorno: { modo: config.entorno, puerto: config.puerto, datos: "local",
-                   authDesactivada: true, tenant: config.tenantPorDefecto,
+                   authDesactivada: config.authDesactivada, tenant: config.tenantPorDefecto,
                    node: process.version, arribaHace: Math.round(process.uptime()) + "s" },
         db: { conecta: true, via: "Postgres local (PGlite) con datos de demo", productos: "—" },
         funciones: [], tablas: [], inventario: [], movimientos: [],

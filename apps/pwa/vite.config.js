@@ -5,25 +5,39 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   // El .env vive en la raíz del repo, no dentro de apps/pwa.
-  // Vite solo expone al navegador las variables que empiezan por VITE_.
   envDir: "../../",
 
   plugins: [
     react(),
     tailwind(),
     VitePWA({
-      registerType: "prompt",   // nunca recargar solo: puede haber un conteo abierto
+      registerType: "prompt",   // nunca recargar solo: puede haber una venta a medias
+      includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Mercado Viva — Inventario",
-        short_name: "Inventario",
+        id: "/",
+        name: "Mercado Viva",
+        short_name: "Mercado Viva",
+        description: "Inventario, caja y tablero de la tienda. Sigue funcionando sin señal.",
+        lang: "es-CO",
         start_url: "/",
+        scope: "/",
         display: "standalone",
         background_color: "#F7F7F4",
-        theme_color: "#16190F"
+        theme_color: "#16190F",
+        // Los PNG salen de scripts/iconos.js. Android necesita 192 y 512;
+        // el maskable trae margen porque cada marca lo recorta distinto.
+        icons: [
+          { src: "/icono-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icono-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icono-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+        ]
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
-        navigateFallback: "/index.html"
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        navigateFallback: "/index.html",
+        // /api nunca se responde con la app guardada: si no hay red, que falle
+        // como falla, para que la operación vaya a la cola.
+        navigateFallbackDenylist: [/^\/api\//]
       }
     })
   ],

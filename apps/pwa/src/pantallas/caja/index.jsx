@@ -7,6 +7,7 @@ import { Icono } from "../../componentes/Icono.jsx";
 import { buscarProducto, ejecutar } from "../../local/operar.js";
 import { productosEnCache, refrescarCatalogo } from "../../local/catalogo.js";
 import { corta, hora, num, pesos, soloDigitos } from "../../lib/formato.js";
+import { usarSesion } from "../../api/sesion.js";
 
 const PAGOS = [
   { valor: "efectivo", texto: "Efectivo", icono: "efectivo" },
@@ -28,6 +29,7 @@ function billetesProbables(total) {
 
 export function Caja() {
   const navigate = useNavigate();
+  const puedeCrear = usarSesion((s) => s.usuario?.rol !== "cajero");
   const [lineas, setLineas] = useState([]);
   const [vaciadas, setVaciadas] = useState(null);
   const [metodo, setMetodo] = useState("efectivo");
@@ -222,14 +224,16 @@ export function Caja() {
               <Aviso
                 tono="atencion"
                 titulo={`El código ${aviso.codigo} no está en el catálogo`}
-                accion={
+                accion={puedeCrear && (
                   <Boton tam="chico" icono="mas"
                     onClick={() => navigate(`/inventario?codigo=${encodeURIComponent(aviso.codigo)}`)}>
                     Crearlo en Inventario
                   </Boton>
-                }
+                )}
               >
-                Créalo con su precio y vuelve a escanearlo aquí.
+                {puedeCrear
+                  ? "Créalo con su precio y vuelve a escanearlo aquí."
+                  : "Pídele a bodega o al administrador que lo registre. Mientras tanto búscalo por nombre."}
               </Aviso>
             )}
             {aviso?.tipo === "sinConexion" && (

@@ -1,4 +1,5 @@
 import { base } from "./base.js";
+import { usarSesion } from "../api/sesion.js";
 
 // Estados: pendiente -> (subida: se borra)
 //          pendiente -> fallido  (sin red: se reintenta con espera creciente)
@@ -8,11 +9,15 @@ const MAX_INTENTOS = 8;
 
 // El id viene en el cuerpo y es el mismo con el que se intentó en línea.
 // Por eso subirla después no puede duplicarla.
+//
+// Se guarda quién la hizo: si en el mismo celular entra otra persona antes de
+// que vuelva la señal, esa venta no se sube a nombre de quien no la hizo.
 export async function encolar(ruta, cuerpo) {
   await base.cola.put({
     id: cuerpo.id,
     ruta,
     cuerpo,
+    usuarioId: usarSesion.getState().usuario?.id ?? null,
     estado: "pendiente",
     intentos: 0,
     proximoIntento: 0,

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const PARA_SUPABASE = ["006_funciones_inventario.sql", "007_ventas_y_tablero.sql"];
+const PARA_SUPABASE = ["006_funciones_inventario.sql", "007_ventas_y_tablero.sql", "008_identidad.sql"];
 
 const partes = await Promise.all(PARA_SUPABASE.map(async (archivo) => {
   const sql = await readFile(path.join(raiz, "db", "migraciones", archivo), "utf8");

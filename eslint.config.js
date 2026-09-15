@@ -57,6 +57,7 @@ export default [
           // se agregan sus dos líneas aquí. plataforma/ no aparece porque es
           // infraestructura compartida, no un módulo de dominio.
           group: [
+            "../identidad/*",      "!../identidad/index.js",
             "../catalogo/*",       "!../catalogo/index.js",
             "../inventario/*",     "!../inventario/index.js",
             "../disponibilidad/*", "!../disponibilidad/index.js",

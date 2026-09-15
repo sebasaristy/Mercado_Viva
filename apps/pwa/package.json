@@ -10,10 +10,10 @@
   },
   "dependencies": {
     "@mv/compartido": "*",
-    "@supabase/supabase-js": "^2.47.0",
     "@zxing/browser": "^0.2.1",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
