@@ -19,7 +19,7 @@ export async function estadoConexion() {
 const TABLAS = [
   "productos", "equivalencias", "ubicaciones", "movimientos", "existencias",
   "reservas", "colchones", "sesiones_conteo", "zonas_conteo", "conteo_lineas",
-  "pedidos", "pedido_lineas", "pedido_eventos"
+  "pedidos", "pedido_lineas", "pedido_eventos", "ventas", "venta_lineas"
 ];
 
 export async function tablasYConteos() {
@@ -27,8 +27,11 @@ export async function tablasYConteos() {
     const { error, count } = await supabase
       .from(tabla).select("*", { count: "exact", head: true });
     // 42P01 es "la tabla no existe": es información, no una falla del panel.
-    if (error) return { tabla, existe: error.code !== "42P01" ? true : false, filas: null,
-                        error: error.message };
+    // PGRST205 es "no existe" en la REST de Supabase; 42P01 en Postgres directo.
+    if (error) {
+      const falta = error.code === "42P01" || error.code === "PGRST205";
+      return { tabla, existe: !falta, filas: null, error: error.message };
+    }
     return { tabla, existe: true, filas: count ?? 0 };
   }));
 }
@@ -39,18 +42,33 @@ const FUNCIONES = [
   { nombre: "disponible_de", usada: "disponibilidad" },
   { nombre: "reservar_lineas", usada: "disponibilidad" },
   { nombre: "movido_durante_conteo", usada: "conteo" },
-  { nombre: "congelar_precios_pedido", usada: "pedidos" }
+  { nombre: "congelar_precios_pedido", usada: "pedidos" },
+  { nombre: "producto_con_stock", usada: "catalogo" },
+  { nombre: "listar_productos", usada: "catalogo" },
+  { nombre: "crear_producto", usada: "catalogo" },
+  { nombre: "venta_detalle", usada: "ventas" },
+  { nombre: "registrar_venta", usada: "ventas" },
+  { nombre: "resumen_tablero", usada: "tablero" }
 ];
 
+// Se le pregunta a la REST qué funciones expone (su esquema OpenAPI). Llamarlas
+// sin argumentos no sirve: responde "no encontrada" tanto si falta como si
+// existe con otros parámetros.
 export async function funcionesInstaladas() {
-  return Promise.all(FUNCIONES.map(async (f) => {
-    // Se llama sin argumentos a propósito: si la función existe, Postgres se queja
-    // por la firma (42883 con "no existe" solo si de verdad falta).
-    const { error } = await supabase.rpc(f.nombre, {});
-    const falta = error?.code === "PGRST202" ||
-      (error?.code === "42883" && /does not exist/i.test(error.message));
-    return { ...f, existe: !falta };
-  }));
+  let expuestas = new Set();
+  try {
+    const clave = config.supabase.serviceRoleKey;
+    const resp = await fetch(`${config.supabase.url}/rest/v1/`, {
+      headers: { apikey: clave, Authorization: `Bearer ${clave}` }
+    });
+    const spec = await resp.json();
+    expuestas = new Set(Object.keys(spec.paths ?? {})
+      .filter((p) => p.startsWith("/rpc/"))
+      .map((p) => p.slice(5)));
+  } catch {
+    // Si no se puede leer, todas quedan como faltantes y el panel lo muestra.
+  }
+  return FUNCIONES.map((f) => ({ ...f, existe: expuestas.has(f.nombre) }));
 }
 
 // Los tres números de los que habla ARQUITECTURA.md.

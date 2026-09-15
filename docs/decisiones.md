@@ -58,3 +58,30 @@ Se salta RLS por completo. Vive únicamente en `apps/api`, en una variable de
 entorno. Si llegara al navegador, cualquiera podría reescribir el inventario
 saltándose todas las reglas. La PWA solo conoce la anon key, y con ella no puede
 escribir nada del inventario.
+
+## 009 — Una venta escribe en tablas de tres módulos, a propósito
+`registrar_venta` escribe en `ventas` (módulo ventas), `movimientos` y `existencias`
+(módulo inventario) dentro de una sola transacción. Rompe la regla de "cada tabla
+tiene un solo dueño", y se acepta porque la alternativa es peor: una venta de cinco
+productos hecha en cinco llamadas puede quedar a medias, cobrando tres y descontando
+dos. En una caja eso no se puede permitir.
+
+La excepción queda acotada a la función SQL. En Node, ventas no importa nada de
+inventario. `resumen_tablero` también cruza módulos, pero solo lee.
+
+## 010 — El precio lo pone la base, nunca la caja
+La caja manda producto y cantidad. El precio y el costo salen de `productos` en el
+momento de la venta y quedan copiados en `venta_lineas`. Así nadie puede vender más
+barato de lo que dice el catálogo, y subir un precio mañana no cambia las ventas de hoy.
+
+## 011 — La venta nunca se bloquea por stock
+Si el sistema dice que no hay pero el cliente tiene el producto en la mano, el que
+está mal es el sistema. Se vende, y la venta devuelve una alerta para contar ese
+producto. Bloquearla solo manda al cliente a otra tienda.
+
+## 012 — Modo local: Postgres dentro del proceso, para trabajar sin claves
+`npm run dev:local` corre la API contra PGlite (Postgres compilado a WebAssembly)
+con 14 días de ventas de demostración. Aplica exactamente las mismas migraciones que
+van a Supabase, y las mismas funciones se prueban en `db/__tests__` contra ese
+Postgres real antes de pegarlas allá. Sirve para que cualquiera del equipo trabaje
+sin configurar nada y para que el SQL no se pruebe "a ver si funciona" en producción.

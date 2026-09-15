@@ -1,5 +1,4 @@
 import inventario from "../inventario/index.js";
-import { enTransaccion } from "../../plataforma/transaccion.js";
 import { ErrorDeNegocio } from "../../plataforma/errores.js";
 import { nuevoId } from "@mv/compartido";
 import * as repo from "./repo.js";
@@ -7,7 +6,7 @@ import * as repo from "./repo.js";
 // Abrir la sesión sí necesita conexión: aquí se congela el teórico contra el cual
 // se va a comparar. Después de esto, cada contador puede trabajar sin red.
 export const abrirSesion = (usuario, datos) =>
-  enTransaccion((tx) => repo.crearSesion(tx, usuario, datos.sede));
+  repo.crearSesion(usuario, datos.sede);
 
 // El unique (sesion_id, ubicacion_id) de la migración hace el trabajo pesado:
 // si la zona ya está asignada, la base lo rechaza. Aquí solo traducimos el error.
@@ -15,7 +14,7 @@ export async function asignarZona(usuario, sesionId, datos) {
   try {
     return await repo.asignarZona(sesionId, datos.ubicacionId, datos.usuarioId);
   } catch (e) {
-    if (e.code === "23505") {
+    if ((e.codigoSupabase ?? e.code) === "23505") {
       throw new ErrorDeNegocio(
         "Esa zona ya está asignada a otro contador en esta sesión.",
         "zona_ocupada"

@@ -16,3 +16,21 @@ npm run db:migrate
 npm run db:seed
 npm run dev               # api :3000 — pwa :5173
 ```
+
+## Probar sin configurar nada
+
+```bash
+npm install
+npm run dev:local         # API con Postgres local y datos de demo, PWA en :5173
+```
+
+Abre http://localhost:5173. Para empezar de cero: `npm run datos-local:reiniciar`.
+
+## Con Supabase
+
+```bash
+npm run db:sql            # genera db/aplicar_en_supabase.sql
+```
+
+Pega ese archivo completo en Supabase → SQL Editor → Run (se puede correr más de
+una vez), llena el `.env` y verifica con `npm run doctor`.

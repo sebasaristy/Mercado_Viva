@@ -10,3 +10,7 @@ db/
 # generados
 package-lock.json.bak
 apps/pwa/dev-dist/
+
+# datos del modo local y el SQL generado para pegar en Supabase
+.datos-local/
+db/aplicar_en_supabase.sql

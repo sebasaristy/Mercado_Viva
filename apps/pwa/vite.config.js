@@ -27,5 +27,16 @@ export default defineConfig({
       }
     })
   ],
-  server: { port: 5173, proxy: { "/api": "http://localhost:3000" } }
+  server: {
+    port: 5173,
+    // La API no tiene prefijo /api: se quita aquí. Sin el rewrite, cada
+    // petición llegaba como /api/inventario/... y la API respondía 404.
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+        rewrite: (ruta) => ruta.slice("/api".length)
+      }
+    }
+  }
 });

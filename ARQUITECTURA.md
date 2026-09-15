@@ -295,8 +295,10 @@ Lo demás sale de ahí:
 ## Entorno de desarrollo
 
 ```bash
-npm run doctor    # revisa node, dependencias, .env, conexión, tablas y semillas
-npm run dev       # api en :3000, pwa en :5173
+npm run doctor    # revisa node, dependencias, .env, conexión, tablas y funciones
+npm run dev       # api en :3000 contra Supabase, pwa en :5173
+npm run dev:local # lo mismo, contra un Postgres local con datos de demo: sin claves
+npm run db:sql    # junta en un archivo el SQL que hay que pegar en Supabase
 ```
 
 `npm run doctor` es lo primero que hay que correr cuando algo no arranca. Dice qué

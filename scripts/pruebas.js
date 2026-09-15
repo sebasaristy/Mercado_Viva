@@ -27,7 +27,8 @@ async function buscarPruebas(dir) {
 }
 
 const archivos = (await Promise.all(
-  ["apps", "packages"].map((c) => buscarPruebas(path.join(raiz, c)))
+  // db/ corre las funciones SQL contra un Postgres real (PGlite).
+  ["apps", "packages", "db"].map((c) => buscarPruebas(path.join(raiz, c)))
 )).flat();
 
 if (archivos.length === 0) {

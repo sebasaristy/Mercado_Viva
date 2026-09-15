@@ -27,28 +27,28 @@ export async function linea(lineaId) {
 
 // Congela el precio y el costo del momento en cada línea: si mañana sube el
 // precio, este pedido no cambia.
-export const congelarPrecios = (pedidoId) =>
+export const congelarPrecios = async (pedidoId) =>
   oTirar(
-    supabase.rpc("congelar_precios_pedido", { p_pedido_id: pedidoId }),
+    await supabase.rpc("congelar_precios_pedido", { p_pedido_id: pedidoId }),
     "congelar precios"
   );
 
-export const cambiarEstado = (pedidoId, estado) =>
+export const cambiarEstado = async (pedidoId, estado) =>
   oTirar(
-    supabase.from("pedidos").update({ estado }).eq("id", pedidoId).select().single(),
+    await supabase.from("pedidos").update({ estado }).eq("id", pedidoId).select().single(),
     "cambiar estado del pedido"
   );
 
-export const cambiarEstadoLinea = (lineaId, estado) =>
+export const cambiarEstadoLinea = async (lineaId, estado) =>
   oTirar(
-    supabase.from("pedido_lineas").update({ estado_linea: estado })
+    await supabase.from("pedido_lineas").update({ estado_linea: estado })
       .eq("id", lineaId).select().single(),
     "cambiar estado de la línea"
   );
 
-export const registrarEvento = (pedidoId, tipo, actorId, datos = {}) =>
+export const registrarEvento = async (pedidoId, tipo, actorId, datos = {}) =>
   oTirar(
-    supabase.from("pedido_eventos")
+    await supabase.from("pedido_eventos")
       .insert({ pedido_id: pedidoId, tipo, actor_id: actorId, datos }).select().single(),
     "registrar evento del pedido"
   );

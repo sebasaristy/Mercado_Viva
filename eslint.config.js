@@ -61,7 +61,9 @@ export default [
             "../inventario/*",     "!../inventario/index.js",
             "../disponibilidad/*", "!../disponibilidad/index.js",
             "../conteo/*",         "!../conteo/index.js",
-            "../pedidos/*",        "!../pedidos/index.js"
+            "../pedidos/*",        "!../pedidos/index.js",
+            "../ventas/*",         "!../ventas/index.js",
+            "../tablero/*",        "!../tablero/index.js"
           ],
           message:
             "Importa el módulo por su index.js. Si necesitas algo que no está exportado ahí, " +

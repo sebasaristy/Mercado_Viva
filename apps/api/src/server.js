@@ -1,6 +1,5 @@
 import { crearApp } from "./app.js";
 import { config } from "./plataforma/config.js";
-import { cerrarPool } from "./plataforma/db.js";
 
 const servidor = crearApp().listen(config.puerto, () => {
   const url = `http://localhost:${config.puerto}`;
@@ -16,6 +15,6 @@ const servidor = crearApp().listen(config.puerto, () => {
 // Sin esto, --watch y Ctrl+C dejan conexiones colgadas contra Supabase.
 for (const senal of ["SIGINT", "SIGTERM"]) {
   process.on(senal, () => {
-    servidor.close(() => cerrarPool().then(() => process.exit(0)));
+    servidor.close(() => process.exit(0));
   });
 }

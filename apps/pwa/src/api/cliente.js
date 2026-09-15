@@ -2,38 +2,58 @@ import { tokenActual } from "./sesion.js";
 
 const BASE = "/api";
 
-export async function enviar(ruta, cuerpo, claveIdempotente) {
+// Un error de la API con lo necesario para decidir qué hacer:
+// deRed = no respondió nadie (se puede guardar y reintentar)
+// si no = el servidor respondió que no (se le muestra el mensaje a la persona).
+export class ErrorApi extends Error {
+  constructor(mensaje, { estado = null, codigo = null, detalle = null, campo = null, causa = null, deRed = false } = {}) {
+    super(mensaje);
+    this.name = "ErrorApi";
+    Object.assign(this, { estado, codigo, detalle, campo, causa, deRed });
+  }
+}
+
+async function pedir(metodo, ruta, { cuerpo, clave } = {}) {
   const token = await tokenActual();
 
   let respuesta;
   try {
     respuesta = await fetch(BASE + ruta, {
-      method: "POST",
+      method: metodo,
       headers: {
-        "content-type": "application/json",
-        "Idempotency-Key": claveIdempotente,
+        ...(cuerpo ? { "content-type": "application/json" } : {}),
+        ...(clave ? { "Idempotency-Key": clave } : {}),
         ...(token ? { authorization: "Bearer " + token } : {})
       },
-      body: JSON.stringify(cuerpo)
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined
     });
   } catch {
-    // No respondió nadie: es falta de red, no un rechazo del servidor.
-    // La operación se queda en la cola y se reintenta.
-    const error = new Error("Sin conexión con el servidor.");
-    error.esDeRed = true;
-    throw error;
+    throw new ErrorApi("No hay conexión con el servidor.", { deRed: true });
   }
+
+  const datos = await respuesta.json().catch(() => null);
 
   if (!respuesta.ok) {
-    const detalle = await respuesta.json().catch(() => ({}));
-    const error = new Error(detalle.mensaje ?? "Error " + respuesta.status);
-    error.estado = respuesta.status;
-    error.detalle = detalle.detalle;
-    // Un 4xx no se reintenta: el servidor ya dijo que está mal y reintentar
-    // solo llena la cola. Un 5xx sí, porque puede ser pasajero.
-    error.esDeRed = respuesta.status >= 500;
-    throw error;
+    // Nuestra API siempre responde JSON. Si no hay cuerpo y es 5xx, respondió
+    // el proxy de desarrollo porque la API no está corriendo: eso es "sin red".
+    const sinApi = !datos && respuesta.status >= 500;
+    throw new ErrorApi(
+      sinApi
+        ? "No hay conexión con el servidor."
+        : datos?.mensaje ?? `El servidor respondió ${respuesta.status}.`,
+      {
+        estado: respuesta.status,
+        codigo: datos?.error,
+        detalle: datos?.detalle,
+        campo: datos?.campo,
+        causa: datos?.causa,
+        deRed: sinApi
+      }
+    );
   }
 
-  return respuesta.json();
+  return datos;
 }
+
+export const obtenerJson = (ruta) => pedir("GET", ruta);
+export const enviarJson = (ruta, cuerpo, clave) => pedir("POST", ruta, { cuerpo, clave });

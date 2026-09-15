@@ -1,21 +1,47 @@
 import { supabase, oTirar } from "../../plataforma/supabase.js";
 
+// Lo que usa el flujo de la tienda va por funciones de la base: así el mismo
+// código corre igual contra Supabase y contra el Postgres local.
+
 export async function porCodigo(tenantId, codigo) {
-  const filas = oTirar(
-    await supabase.from("productos").select("*")
-      .eq("tenant_id", tenantId).eq("codigo_barras", codigo).eq("activo", true).limit(1),
+  return oTirar(
+    await supabase.rpc("producto_con_stock", { p_tenant_id: tenantId, p_codigo: codigo }),
     "buscar producto por código"
   );
-  return filas[0] ?? null;
 }
 
 export async function porId(tenantId, id) {
-  const filas = oTirar(
-    await supabase.from("productos").select("*")
-      .eq("tenant_id", tenantId).eq("id", id).limit(1),
-    "buscar producto por id"
+  return oTirar(
+    await supabase.rpc("producto_con_stock", { p_tenant_id: tenantId, p_id: id }),
+    "buscar producto"
   );
-  return filas[0] ?? null;
+}
+
+export async function listar(tenantId, busqueda) {
+  return oTirar(
+    await supabase.rpc("listar_productos", { p_tenant_id: tenantId, p_busqueda: busqueda || null }),
+    "listar productos"
+  );
+}
+
+export async function crear(p) {
+  return oTirar(
+    await supabase.rpc("crear_producto", {
+      p_id: p.id,
+      p_tenant_id: p.tenantId,
+      p_usuario_id: p.usuarioId,
+      p_nombre: p.nombre,
+      p_categoria: p.categoria,
+      p_unidad: p.unidad,
+      p_precio: p.precio,
+      p_costo: p.costo,
+      p_stock_minimo: p.stockMinimo,
+      p_codigo: p.codigo ?? null,
+      p_cantidad_inicial: p.cantidadInicial,
+      p_movimiento_id: p.movimientoId ?? null
+    }),
+    "crear producto"
+  );
 }
 
 export async function equivalentes(tenantId, productoId) {

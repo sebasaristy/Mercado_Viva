@@ -48,9 +48,9 @@ export async function lineasDeSesion(sesionId) {
   return filas;
 }
 
-export const cerrar = (sesionId) =>
+export const cerrar = async (sesionId) =>
   oTirar(
-    supabase.from("sesiones_conteo")
+    await supabase.from("sesiones_conteo")
       .update({ estado: "cerrada", cerrada_en: new Date().toISOString() })
       .eq("id", sesionId).select().single(),
     "cerrar sesión"

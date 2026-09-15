@@ -1,4 +1,5 @@
 import { log } from "./log.js";
+import { config } from "./config.js";
 
 export class ErrorDeNegocio extends Error {
   constructor(mensaje, codigo = "regla_de_negocio", estado = 409, detalle = null) {
@@ -29,6 +30,24 @@ export function manejadorDeErrores(err, req, res, _siguiente) {
       error: err.codigo, mensaje: err.message, detalle: err.detalle
     });
   }
-  log.error({ err, ruta: req.originalUrl }, "error no controlado");
-  res.status(500).json({ error: "interno", mensaje: "Algo falló de nuestro lado." });
+
+  // Un dato con la forma equivocada es culpa de quien llama (400), no del
+  // servidor (500). Se devuelve el primer problema, que es el que hay que arreglar.
+  if (err?.name === "ZodError") {
+    const primero = err.issues?.[0];
+    return res.status(400).json({
+      error: "entrada_invalida",
+      mensaje: primero?.message ?? "Los datos enviados no tienen la forma esperada.",
+      campo: primero?.path?.join(".") ?? null,
+      detalle: err.issues
+    });
+  }
+
+  log.error({ err: err?.message, ruta: req.originalUrl }, "error no controlado");
+  res.status(500).json({
+    error: "interno",
+    mensaje: "Algo falló de nuestro lado.",
+    // En desarrollo se muestra la causa: sin esto, depurar es adivinar.
+    ...(config.esDesarrollo ? { causa: err?.message } : {})
+  });
 }

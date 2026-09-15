@@ -4,22 +4,29 @@
    neutros con sesgo oliva y un ocre como único acento.
 
    El ocre hace doble trabajo a propósito: es el color de la acción principal
-   Y el de "esto está pendiente de subir". En esta app las dos cosas significan
-   lo mismo para el operario — algo que requiere su atención. */
+   Y el de "esto requiere tu atención" (stock bajo, operaciones sin subir).
+   Rojo solo para lo que está mal; verde solo para lo que salió bien. */
 @theme {
-  --color-fondo:        #F7F7F4;
-  --color-panel:        #FFFFFF;
-  --color-panel-alt:    #EFEFEA;
-  --color-borde:        #D9DBD1;
-  --color-borde-fuerte: #A8AC9C;
-  --color-tinta:        #16190F;
-  --color-tenue:        #5C6153;
-  --color-acento:       #8A5207;
-  --color-acento-hover: #6E4106;
-  --color-acento-suave: #F4EADA;
-  --color-ok:           #1D6B3C;
-  --color-peligro:      #A6332A;
-  --color-peligro-suave:#F7E7E5;
+  --color-fondo:         #F7F7F4;
+  --color-panel:         #FFFFFF;
+  --color-panel-alt:     #EFEFEA;
+  --color-borde:         #D9DBD1;
+  /* Borde de campos y controles. Medido: 3,55:1 contra el panel. El anterior
+     (#A8AC9C) daba 2,32:1 y no cumplía el 3:1 que pide un control. */
+  --color-borde-fuerte:  #858A7A;
+  --color-tinta:         #16190F;
+  --color-tenue:         #5C6153;
+  --color-acento:        #8A5207;
+  --color-acento-hover:  #6E4106;
+  --color-acento-suave:  #F4EADA;
+  --color-ok:            #1D6B3C;
+  --color-ok-suave:      #E3EEE6;
+  --color-peligro:       #A6332A;
+  --color-peligro-suave: #F7E7E5;
+
+  /* Gráficos: el acento marca lo que importa (la hora actual, hoy) y el resto
+     va en este gris de contexto. Medido: 3,16:1 contra el panel. */
+  --color-contexto:      #8E9383;
 
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -27,9 +34,8 @@
   --radius-pieza: 4px;
 }
 
-/* Se usa a un brazo de distancia, en bodega y pasillos. El cuerpo va a 17px
-   en vez de los 16 habituales, y los objetivos táctiles a 56px en vez de 44,
-   porque a veces se toca con guantes. */
+/* Se usa a un brazo de distancia, en bodega, pasillos y caja. El cuerpo va a
+   17px y los objetivos táctiles a 48-56px, porque a veces se toca con guantes. */
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -43,8 +49,7 @@
     font-size: 17px;
     line-height: 1.5;
     margin: 0;
-    /* Evita el zoom por doble toque en Android, que en una pantalla de caja
-       o de conteo es un accidente constante. */
+    /* Evita el zoom por doble toque en Android, que en la caja es un accidente constante. */
     touch-action: manipulation;
   }
 
@@ -55,7 +60,20 @@
     outline-offset: 2px;
   }
 
-  /* Las cantidades se leen en columna y no pueden bailar al cambiar. */
+  input:focus {
+    outline: none;
+  }
+
+  input:focus-visible {
+    outline: 3px solid var(--color-acento);
+    outline-offset: 1px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  /* Las cantidades y los precios se leen en columna y no pueden bailar al cambiar. */
   .cifras {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

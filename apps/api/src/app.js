@@ -11,6 +11,8 @@ import inventario from "./modulos/inventario/index.js";
 import disponibilidad from "./modulos/disponibilidad/index.js";
 import conteo from "./modulos/conteo/index.js";
 import pedidos from "./modulos/pedidos/index.js";
+import ventas from "./modulos/ventas/index.js";
+import tablero from "./modulos/tablero/index.js";
 
 export function crearApp() {
   const app = express();
@@ -19,7 +21,7 @@ export function crearApp() {
   app.use(registrarPeticiones);
   if (config.esDesarrollo) app.use(imprimirEnTerminal);
 
-  app.get("/salud", (_req, res) => res.json({ ok: true, modo: config.entorno }));
+  app.get("/salud", (_req, res) => res.json({ ok: true, modo: config.entorno, datos: config.datos }));
 
   // Cada módulo expone sus rutas en su index. app.js no sabe qué hay adentro.
   app.use("/catalogo", requiereSesion, catalogo.rutas);
@@ -27,6 +29,8 @@ export function crearApp() {
   app.use("/disponibilidad", requiereSesion, disponibilidad.rutas);
   app.use("/conteo", requiereSesion, conteo.rutas);
   app.use("/pedidos", requiereSesion, pedidos.rutas);
+  app.use("/ventas", requiereSesion, ventas.rutas);
+  app.use("/tablero", requiereSesion, tablero.rutas);
 
   // Solo en desarrollo. Sin sesión: es una herramienta local, no una API.
   montarPanelDev(app);

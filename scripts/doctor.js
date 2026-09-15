@@ -102,7 +102,7 @@ if (!url || url.includes("[") || !claveService) {
   const TABLAS = [
     "productos", "equivalencias", "ubicaciones", "movimientos", "existencias",
     "reservas", "colchones", "sesiones_conteo", "zonas_conteo", "conteo_lineas",
-    "pedidos", "pedido_lineas", "pedido_eventos"
+    "pedidos", "pedido_lineas", "pedido_eventos", "ventas", "venta_lineas"
   ];
 
   const resultados = await Promise.all(TABLAS.map(async (t) => {
@@ -110,8 +110,11 @@ if (!url || url.includes("[") || !claveService) {
     return { tabla: t, error, filas: count ?? 0 };
   }));
 
-  const noAlcanzables = resultados.filter((r) => r.error && r.error.code === "42P01");
-  const otrosErrores = resultados.filter((r) => r.error && r.error.code !== "42P01");
+  // La REST de Supabase dice que una tabla no existe con PGRST205; Postgres
+  // directo, con 42P01. Hay que aceptar los dos o una tabla que falta pasa por buena.
+  const faltaTabla = (e) => e && (e.code === "42P01" || e.code === "PGRST205");
+  const noAlcanzables = resultados.filter((r) => faltaTabla(r.error));
+  const otrosErrores = resultados.filter((r) => r.error && !faltaTabla(r.error));
 
   if (otrosErrores.length) {
     const e = otrosErrores[0].error;
@@ -138,19 +141,37 @@ if (!url || url.includes("[") || !claveService) {
 
     // Las funciones son las que hacen las escrituras atómicas. Sin ellas no se
     // puede registrar nada, aunque las tablas estén.
-    const FUNCIONES = ["registrar_movimiento", "disponible_de", "reservar_lineas",
-                       "movido_durante_conteo", "congelar_precios_pedido"];
-    const faltanFn = [];
-    for (const fn of FUNCIONES) {
-      const { error } = await sb.rpc(fn, {});
-      // PGRST202 = la REST no encuentra la función. Cualquier otro error significa
-      // que existe y se quejó por los argumentos, que es justo lo que esperamos.
-      if (error?.code === "PGRST202") faltanFn.push(fn);
+    const FUNCIONES = [
+      "registrar_movimiento", "disponible_de", "reservar_lineas",
+      "movido_durante_conteo", "congelar_precios_pedido",
+      "producto_con_stock", "listar_productos", "crear_producto",
+      "venta_detalle", "registrar_venta", "resumen_tablero"
+    ];
+    // Se pregunta a la propia REST qué funciones expone (su esquema OpenAPI).
+    // Llamarlas sin argumentos no sirve para saberlo: la REST responde
+    // "no encontrada" tanto si falta como si existe con otros parámetros.
+    let expuestas = null;
+    try {
+      const resp = await fetch(`${url}/rest/v1/`, {
+        headers: { apikey: claveService, Authorization: `Bearer ${claveService}` }
+      });
+      if (resp.ok) {
+        const spec = await resp.json();
+        expuestas = new Set(Object.keys(spec.paths ?? {})
+          .filter((p) => p.startsWith("/rpc/"))
+          .map((p) => p.slice(5)));
+      }
+    } catch { /* se informa abajo */ }
+
+    if (!expuestas) {
+      aviso("No se pudo leer la lista de funciones de la REST", "revisa a mano en Supabase → Database → Functions");
+    } else {
+      const faltanFn = FUNCIONES.filter((fn) => !expuestas.has(fn));
+      faltanFn.length === 0
+        ? ok(`Las ${FUNCIONES.length} funciones RPC están`)
+        : mal(`Faltan ${faltanFn.length} funciones: ${faltanFn.join(", ")}`,
+            "npm run db:sql y pega db/aplicar_en_supabase.sql completo en el editor SQL de Supabase");
     }
-    faltanFn.length === 0
-      ? ok(`Las ${FUNCIONES.length} funciones RPC están`)
-      : mal(`Faltan funciones: ${faltanFn.join(", ")}`,
-          "corre db/migraciones/006_funciones_inventario.sql en el editor SQL de Supabase");
 
     const productos = resultados.find((r) => r.tabla === "productos");
     if (productos && !productos.error) {

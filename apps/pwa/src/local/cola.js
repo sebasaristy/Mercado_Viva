@@ -1,53 +1,52 @@
-import { nuevoId } from "@mv/compartido";
-import { local } from "./db.js";
+import { base } from "./base.js";
 
-// Estados: pendiente -> enviando -> enviado
-//                    \-> fallido (se reintenta con espera creciente)
-//                    \-> atascado (agotó los intentos: lo tiene que ver una persona)
+// Estados: pendiente -> (subida: se borra)
+//          pendiente -> fallido  (sin red: se reintenta con espera creciente)
+//          pendiente -> atascado (el servidor la rechazó o se agotaron los intentos:
+//                                 reintentar no la arregla, la tiene que ver alguien)
 const MAX_INTENTOS = 8;
 
-// El id se crea AQUÍ, en el momento en que ocurre la operación.
-// No cuando se envía. Es lo que hace que reintentar no duplique.
-export async function encolar(tipo, ruta, cuerpo) {
-  const id = nuevoId();
-  await local.cola.add({
-    id, tipo, ruta,
-    cuerpo: { ...cuerpo, id, creadoEn: new Date().toISOString() },
+// El id viene en el cuerpo y es el mismo con el que se intentó en línea.
+// Por eso subirla después no puede duplicarla.
+export async function encolar(ruta, cuerpo) {
+  await base.cola.put({
+    id: cuerpo.id,
+    ruta,
+    cuerpo,
     estado: "pendiente",
     intentos: 0,
     proximoIntento: 0,
     creadoEn: Date.now(),
     ultimoError: null
   });
-  return id;
 }
 
-export const pendientes = () =>
-  local.cola.where("estado").anyOf("pendiente", "fallido").toArray();
+// En el orden en que ocurrieron: crear un producto tiene que subir antes que
+// la venta de ese producto.
+export async function pendientes() {
+  const items = await base.cola.where("estado").anyOf("pendiente", "fallido").toArray();
+  return items.sort((a, b) => a.creadoEn - b.creadoEn);
+}
 
-export const cuantasPendientes = () =>
-  local.cola.where("estado").anyOf("pendiente", "fallido", "atascado").count();
+export const contarPendientes = () =>
+  base.cola.where("estado").anyOf("pendiente", "fallido").count();
 
-export const marcarEnviando = (id) => local.cola.update(id, { estado: "enviando" });
+export const atascadas = () => base.cola.where("estado").equals("atascado").toArray();
 
-export const marcarEnviado = (id) =>
-  local.cola.update(id, { estado: "enviado", ultimoError: null });
+export const marcarSubida = (id) => base.cola.delete(id);
 
-export async function marcarFallido(id, error) {
-  const item = await local.cola.get(id);
-  const intentos = (item?.intentos ?? 0) + 1;
-  // Espera creciente: 2s, 4s, 8s... con techo de 5 minutos.
+export async function marcarFallida(id, error, sePuedeReintentar) {
+  const item = await base.cola.get(id);
+  if (!item) return;
+  const intentos = item.intentos + 1;
+  // Espera creciente: 2 s, 4 s, 8 s... con techo de 5 minutos.
   const espera = Math.min(2 ** intentos * 1000, 5 * 60 * 1000);
-  await local.cola.update(id, {
-    estado: intentos >= MAX_INTENTOS ? "atascado" : "fallido",
+  await base.cola.update(id, {
+    estado: !sePuedeReintentar || intentos >= MAX_INTENTOS ? "atascado" : "fallido",
     intentos,
     proximoIntento: Date.now() + espera,
     ultimoError: String(error?.message ?? error)
   });
 }
 
-// Se guardan un rato por si hay que revisar algo, no para siempre.
-export const limpiarEnviados = () =>
-  local.cola.where("estado").equals("enviado")
-    .and((i) => Date.now() - i.creadoEn > 86400000)
-    .delete();
+export const descartar = (id) => base.cola.delete(id);

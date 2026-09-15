@@ -22,6 +22,19 @@ export function montarPanelDev(app) {
   });
 
   rutas.get("/estado", async (_req, res) => {
+    // En modo local no hay REST de Supabase que inspeccionar: se dice claro.
+    if (config.datos === "local") {
+      return res.json({
+        entorno: { modo: config.entorno, puerto: config.puerto, datos: "local",
+                   authDesactivada: true, tenant: config.tenantPorDefecto,
+                   node: process.version, arribaHace: Math.round(process.uptime()) + "s" },
+        db: { conecta: true, via: "Postgres local (PGlite) con datos de demo", productos: "—" },
+        funciones: [], tablas: [], inventario: [], movimientos: [],
+        rutas: estado.rutasMontadas(app),
+        peticiones: ultimasPeticiones(40)
+      });
+    }
+
     const [db, funciones, tablas, inventario, movimientos] = await Promise.all([
       estado.estadoConexion(),
       estado.funcionesInstaladas(),
